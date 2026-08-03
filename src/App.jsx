@@ -70,12 +70,58 @@ async function uploadToCloudinary(file, albumId, resourceType) {
   } catch (error) { console.error('Erro no upload:', error); throw error; }
 }
 
+// Atualizar favicon dinamicamente com a foto de perfil do álbum
+function updateFavicon(photoUrl) {
+  if (!photoUrl) return;
+  
+  // Remover favicon antigo
+  var existingFavicon = document.querySelector('link[rel="icon"]');
+  if (existingFavicon) {
+    existingFavicon.remove();
+  }
+  
+  // Criar um canvas para redimensionar a imagem
+  var canvas = document.createElement('canvas');
+  canvas.width = 32;
+  canvas.height = 32;
+  var ctx = canvas.getContext('2d');
+  
+  var img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = function() {
+    // Criar efeito circular
+    ctx.beginPath();
+    ctx.arc(16, 16, 16, 0, Math.PI * 2);
+    ctx.closePath();
+    ctx.clip();
+    ctx.drawImage(img, 0, 0, 32, 32);
+    
+    // Criar elemento link para favicon
+    var favicon = document.createElement('link');
+    favicon.rel = 'icon';
+    favicon.type = 'image/png';
+    favicon.href = canvas.toDataURL('image/png');
+    document.head.appendChild(favicon);
+  };
+  img.onerror = function() {
+    // Se falhar, usar um favicon padrão
+    var favicon = document.createElement('link');
+    favicon.rel = 'icon';
+    favicon.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📸</text></svg>';
+    document.head.appendChild(favicon);
+  };
+  img.src = photoUrl;
+}
+
 function updateMetaTags(album) {
   if (!album) return;
   const photoUrl = album.profileImage || (album.photos && album.photos[0]) || '';
   document.title = album.clientName || 'Album';
   const metaTags = [{ property: 'og:title', content: album.clientName || '' }, { property: 'og:image', content: photoUrl }, { name: 'description', content: album.subtitle || '' }];
   metaTags.forEach(function(tag) { var meta; if (tag.property) { meta = document.querySelector('meta[property="' + tag.property + '"]'); if (!meta) { meta = document.createElement('meta'); meta.setAttribute('property', tag.property); } } else { meta = document.querySelector('meta[name="' + tag.name + '"]'); if (!meta) { meta = document.createElement('meta'); meta.setAttribute('name', tag.name); } } meta.setAttribute('content', tag.content); if (!meta.parentNode) document.head.appendChild(meta); });
+  
+  // Atualizar favicon
+  updateFavicon(photoUrl);
 }
 
 const saveAlbumToSheets = async function(album) { try { const response = await fetch(SHEETS_API_URL, { method: 'POST', mode: 'cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'save', id: album.shortId, album: album }) }); return (await response.json()).success; } catch (e) { return false; } };
@@ -219,64 +265,23 @@ function ClientApp(props) {
     }
   }, [isAuthenticated, album.introVideo, videoEnded, videoError, albumExpired]);
   
-  // Reproduzir vídeo e monitorar travamentos
   useEffect(function() {
     if (showIntroVideo && videoRef.current) {
       var video = videoRef.current;
-      
-      var handleStalled = function() {
-        setVideoStalled(true);
-        // Tentar reconectar após 2 segundos
-        if (videoRetryTimer.current) clearTimeout(videoRetryTimer.current);
-        videoRetryTimer.current = setTimeout(function() {
-          if (video && video.paused && !video.ended) {
-            video.load();
-            video.play().catch(function() {});
-            setVideoStalled(false);
-          }
-        }, 2000);
-      };
-      
-      var handlePlaying = function() {
-        setVideoStalled(false);
-        setShowVideoOverlay(false);
-      };
-      
-      var handleWaiting = function() {
-        setVideoStalled(true);
-      };
-      
-      var handleCanPlay = function() {
-        setVideoStalled(false);
-        setShowVideoOverlay(false);
-      };
-      
+      var handleStalled = function() { setVideoStalled(true); if (videoRetryTimer.current) clearTimeout(videoRetryTimer.current); videoRetryTimer.current = setTimeout(function() { if (video && video.paused && !video.ended) { video.load(); video.play().catch(function() {}); setVideoStalled(false); } }, 2000); };
+      var handlePlaying = function() { setVideoStalled(false); setShowVideoOverlay(false); };
+      var handleWaiting = function() { setVideoStalled(true); };
+      var handleCanPlay = function() { setVideoStalled(false); setShowVideoOverlay(false); };
       video.addEventListener('stalled', handleStalled);
       video.addEventListener('playing', handlePlaying);
       video.addEventListener('waiting', handleWaiting);
       video.addEventListener('canplay', handleCanPlay);
-      
-      video.play().catch(function() {
-        setShowVideoOverlay(true);
-      });
-      
-      return function() {
-        video.removeEventListener('stalled', handleStalled);
-        video.removeEventListener('playing', handlePlaying);
-        video.removeEventListener('waiting', handleWaiting);
-        video.removeEventListener('canplay', handleCanPlay);
-        if (videoRetryTimer.current) clearTimeout(videoRetryTimer.current);
-      };
+      video.play().catch(function() { setShowVideoOverlay(true); });
+      return function() { video.removeEventListener('stalled', handleStalled); video.removeEventListener('playing', handlePlaying); video.removeEventListener('waiting', handleWaiting); video.removeEventListener('canplay', handleCanPlay); if (videoRetryTimer.current) clearTimeout(videoRetryTimer.current); };
     }
   }, [showIntroVideo]);
   
-  useEffect(function() {
-    if (showIntroVideo && showVideoOverlay) {
-      var timer = setTimeout(function() { setShowVideoOverlay(false); }, 5000);
-      return function() { clearTimeout(timer); };
-    }
-  }, [showIntroVideo, showVideoOverlay]);
-  
+  useEffect(function() { if (showIntroVideo && showVideoOverlay) { var timer = setTimeout(function() { setShowVideoOverlay(false); }, 5000); return function() { clearTimeout(timer); }; } }, [showIntroVideo, showVideoOverlay]);
   useEffect(function() { if (showIntroVideo) { var t = setTimeout(function() { handleVideoEnded(); }, 600000); return function() { clearTimeout(t); }; } }, [showIntroVideo]);
   
   useEffect(function() {
@@ -292,7 +297,6 @@ function ClientApp(props) {
     }
     if (!album.storyMusic && audioRef.current) { audioRef.current.pause(); audioRef.current = null; setAudioLoaded(false); }
   }, [activeTab, album.storyMusic, isAuthenticated, showIntroVideo, videoEnded, albumExpired]);
-  
   useEffect(function() { if (audioRef.current && audioLoaded) { if (activeTab === 'stories' && isStoryPlaying && !showIntroVideo && videoEnded && !albumExpired) audioRef.current.play().catch(function() {}); else audioRef.current.pause(); } }, [isStoryPlaying, activeTab, audioLoaded, showIntroVideo, videoEnded, albumExpired]);
   useEffect(function() { if (audioRef.current) audioRef.current.muted = isMuted; }, [isMuted]);
   useEffect(function() { if (storyBarsRef.current && album.photos?.length > 0) { var activeBar = storyBarsRef.current.children[currentStoryIdx]; if (activeBar) { activeBar.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } } }, [currentStoryIdx, album.photos]);
@@ -300,11 +304,7 @@ function ClientApp(props) {
   useEffect(function() {
     if (activeTab === 'stories' && isStoryPlaying && album.photos?.length > 0 && !showIntroVideo && videoEnded && !albumExpired) {
       var d = 4000; storyStartTimeRef.current = Date.now() - (storyProgress * d);
-      storyTimerRef.current = setInterval(function() {
-        var el = Date.now() - storyStartTimeRef.current; var p = el / d;
-        if (p >= 1) { if (currentStoryIdx < album.photos.length - 1) { setCurrentStoryIdx(function(v) { return v + 1; }); setStoryProgress(0); storyStartTimeRef.current = Date.now(); } else { setIsStoryPlaying(false); setActiveTab('gallery'); clearInterval(storyTimerRef.current); } }
-        else { setStoryProgress(p); }
-      }, 100);
+      storyTimerRef.current = setInterval(function() { var el = Date.now() - storyStartTimeRef.current; var p = el / d; if (p >= 1) { if (currentStoryIdx < album.photos.length - 1) { setCurrentStoryIdx(function(v) { return v + 1; }); setStoryProgress(0); storyStartTimeRef.current = Date.now(); } else { setIsStoryPlaying(false); setActiveTab('gallery'); clearInterval(storyTimerRef.current); } } else { setStoryProgress(p); } }, 100);
     } else { if (storyTimerRef.current) { clearInterval(storyTimerRef.current); storyTimerRef.current = null; } }
     return function() { if (storyTimerRef.current) clearInterval(storyTimerRef.current); };
   }, [activeTab, isStoryPlaying, currentStoryIdx, album.photos, showIntroVideo, videoEnded, albumExpired]);
@@ -325,55 +325,20 @@ function ClientApp(props) {
   var handleShareCurrentStory = function() { if (album.photos && album.photos[currentStoryIdx]) { handleSharePhoto(album.photos[currentStoryIdx]); } };
   var hasWhatsApp = album.whatsappNumber?.trim();
 
-  // TELA DE VÍDEO INTRO - COM TRATAMENTO DE TRAVAMENTOS
   if (isAuthenticated && showIntroVideo && album.introVideo && !albumExpired) {
     var orientation = detectVideoOrientation(album.introVideo);
     var isVertical = orientation === 'vertical';
     return (
       <div onClick={function() { if (showVideoOverlay) setShowVideoOverlay(false); }} style={{ margin: 0, padding: 0, background: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100dvh', width: '100vw', position: 'fixed', top: 0, left: 0, zIndex: 9999, overflow: 'hidden', cursor: showVideoOverlay ? 'pointer' : 'default' }}>
-        <style>{'@keyframes pulse-play{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.08);opacity:1}}@keyframes float-text{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}'}</style>
+        <style>{'@keyframes pulse-play{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.08);opacity:1}}'}</style>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', position: 'relative' }}>
           <div style={{ width: isVertical ? 'min(100%, 420px)' : 'min(100%, 90vw)', maxHeight: '100dvh', aspectRatio: isVertical ? '9/16' : '16/9', position: 'relative', overflow: 'hidden', borderRadius: isVertical ? '20px' : '12px', background: '#000', boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
-            <video 
-              ref={videoRef} 
-              src={album.introVideo} 
-              autoPlay 
-              playsInline 
-              muted={false}
-              preload="auto"
-              onEnded={handleVideoEnded} 
-              onError={handleVideoError}
-              style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} 
-            />
-            
-            {/* Indicador de buffer/travamento */}
-            {videoStalled && (
-              <div style={{ position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', color: 'white', padding: '10px 20px', borderRadius: '20px', fontSize: '0.8rem', zIndex: 20, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Loader2 size={16} className="animate-spin" />
-                <span>Carregando video...</span>
-              </div>
-            )}
-            
-            {(showVideoOverlay || videoStalled) && (
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', zIndex: 10, pointerEvents: 'none' }}>
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(212,175,55,0.25)', border: '3px solid rgba(212,175,55,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', animation: videoStalled ? 'none' : 'pulse-play 2s ease-in-out infinite' }}>
-                  {videoStalled ? <Loader2 size={38} className="animate-spin" color="rgba(212,175,55,0.95)" /> : <Play size={38} fill="rgba(212,175,55,0.95)" color="rgba(212,175,55,0.95)" style={{ marginLeft: '3px' }} />}
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ color: 'white', fontSize: '1.05rem', fontWeight: 600, margin: '0 0 6px 0' }}>
-                    {videoStalled ? 'Buffering...' : 'Aguarde o video esta carregando'}
-                  </p>
-                  <p style={{ color: 'rgba(212,175,55,0.9)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>
-                    {videoStalled ? 'O video continuara em instantes' : 'o video sera iniciado automaticamente'}
-                  </p>
-                </div>
-              </div>
-            )}
+            <video ref={videoRef} src={album.introVideo} autoPlay playsInline muted={false} preload="auto" onEnded={handleVideoEnded} onError={handleVideoError} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+            {videoStalled && <div style={{ position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', color: 'white', padding: '10px 20px', borderRadius: '20px', fontSize: '0.8rem', zIndex: 20, display: 'flex', alignItems: 'center', gap: '8px' }}><Loader2 size={16} className="animate-spin" /><span>Carregando video...</span></div>}
+            {(showVideoOverlay || videoStalled) && <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', zIndex: 10, pointerEvents: 'none' }}><div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(212,175,55,0.25)', border: '3px solid rgba(212,175,55,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', animation: videoStalled ? 'none' : 'pulse-play 2s ease-in-out infinite' }}>{videoStalled ? <Loader2 size={38} className="animate-spin" color="rgba(212,175,55,0.95)" /> : <Play size={38} fill="rgba(212,175,55,0.95)" color="rgba(212,175,55,0.95)" style={{ marginLeft: '3px' }} />}</div><div style={{ textAlign: 'center' }}><p style={{ color: 'white', fontSize: '1.05rem', fontWeight: 600, margin: '0 0 6px 0' }}>{videoStalled ? 'Buffering...' : 'Aguarde o video esta carregando'}</p><p style={{ color: 'rgba(212,175,55,0.9)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>{videoStalled ? 'O video continuara em instantes' : 'o video sera iniciado automaticamente'}</p></div></div>}
           </div>
         </div>
-        <button onClick={function(e) { e.stopPropagation(); handleSkipVideo(); }} style={{ position: 'fixed', bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', color: 'white', padding: '0.7rem 1.3rem', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}>
-          <SkipForward size={16} /> Pular Video
-        </button>
+        <button onClick={function(e) { e.stopPropagation(); handleSkipVideo(); }} style={{ position: 'fixed', bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', color: 'white', padding: '0.7rem 1.3rem', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}><SkipForward size={16} /> Pular Video</button>
       </div>
     );
   }
@@ -382,13 +347,7 @@ function ClientApp(props) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center p-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-red-900/20 via-[#0a0a0a] to-[#0a0a0a] z-[1]" />
-        <div className="max-w-md w-full bg-black/60 backdrop-blur-xl border border-red-500/30 rounded-3xl p-8 text-center shadow-2xl relative z-10">
-          <div className="w-20 h-20 rounded-full bg-red-500/20 border-2 border-red-500/50 flex items-center justify-center mx-auto mb-6"><AlertTriangle size={40} className="text-red-400" /></div>
-          <h2 className="text-2xl font-bold tracking-tight mb-2 text-white">Album Expirado</h2><p className="text-gray-400 text-sm mb-2">Este album nao esta mais disponivel para visualizacao.</p>
-          {expiryDateFormatted && <p className="text-red-400/80 text-xs mb-6">Data de expiracao: {expiryDateFormatted}</p>}
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6"><p className="text-gray-300 text-sm leading-relaxed">Caso nao tenha acessado a tempo, entre em contato com o fotografo.</p></div>
-          {hasWhatsApp ? <button onClick={handleWhatsAppContact} className="w-full bg-[#25D366] hover:bg-[#20b859] text-white font-bold p-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg"><MessageCircle size={20} />Falar com o Fotografo</button> : <div className="text-gray-500 text-sm">WhatsApp nao disponivel.</div>}
-        </div>
+        <div className="max-w-md w-full bg-black/60 backdrop-blur-xl border border-red-500/30 rounded-3xl p-8 text-center shadow-2xl relative z-10"><div className="w-20 h-20 rounded-full bg-red-500/20 border-2 border-red-500/50 flex items-center justify-center mx-auto mb-6"><AlertTriangle size={40} className="text-red-400" /></div><h2 className="text-2xl font-bold tracking-tight mb-2 text-white">Album Expirado</h2><p className="text-gray-400 text-sm mb-2">Este album nao esta mais disponivel.</p>{expiryDateFormatted && <p className="text-red-400/80 text-xs mb-6">Data de expiracao: {expiryDateFormatted}</p>}<div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6"><p className="text-gray-300 text-sm">Entre em contato com o fotografo.</p></div>{hasWhatsApp ? <button onClick={handleWhatsAppContact} className="w-full bg-[#25D366] hover:bg-[#20b859] text-white font-bold p-3 rounded-xl flex items-center justify-center gap-2 shadow-lg"><MessageCircle size={20} />Falar com o Fotografo</button> : <div className="text-gray-500 text-sm">WhatsApp nao disponivel.</div>}</div>
       </div>
     );
   }
@@ -430,23 +389,12 @@ function ClientApp(props) {
       </div>
       {album.expiryDate && daysRemaining !== null && daysRemaining <= 7 && <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3"><div className={'rounded-xl p-3 flex items-center gap-2 ' + (albumExpired ? 'bg-red-500/10 border border-red-500/30' : 'bg-yellow-500/10 border border-yellow-500/30')}><Clock size={16} className={albumExpired ? 'text-red-400' : 'text-yellow-400'} /><p className={'text-xs ' + (albumExpired ? 'text-red-400' : 'text-yellow-400')}>{albumExpired ? 'Este album expirou.' : 'Este album expira em ' + daysRemaining + ' dia(s).'}</p></div></div>}
       {activeTab === 'video' && album.introVideo && (
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4">
-          <div className="flex items-center justify-between mb-3 sm:mb-4"><h2 className="text-sm sm:text-base font-semibold text-gray-200">Video de Abertura</h2><button onClick={function() { setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); }} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><SkipForward size={12} /> Pular para Stories</button></div>
-          <div style={{ display: 'flex', justifyContent: 'center' }}><div style={{ width: '100%', maxWidth: '420px', aspectRatio: '9/16', maxHeight: '70vh', position: 'relative', overflow: 'hidden', borderRadius: '20px', background: '#000', boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}><video src={album.introVideo} controls autoPlay playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} /></div></div>
-        </div>
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4"><div className="flex items-center justify-between mb-3 sm:mb-4"><h2 className="text-sm sm:text-base font-semibold text-gray-200">Video de Abertura</h2><button onClick={function() { setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); }} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><SkipForward size={12} /> Pular para Stories</button></div><div style={{ display: 'flex', justifyContent: 'center' }}><div style={{ width: '100%', maxWidth: '420px', aspectRatio: '9/16', maxHeight: '70vh', position: 'relative', overflow: 'hidden', borderRadius: '20px', background: '#000' }}><video src={album.introVideo} controls autoPlay playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} /></div></div></div>
       )}
       {activeTab === 'gallery' && (
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4">
-          <div className="flex items-center justify-between mb-3 sm:mb-4"><h2 className="text-sm sm:text-base font-semibold text-gray-200">Galeria ({(album.photos || []).length})</h2><div className="flex gap-1.5 sm:gap-2">{hasWhatsApp && <button onClick={handleWhatsAppContact} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#25D366] hover:bg-[#20b859] text-white font-semibold px-3 py-1.5 rounded-full shadow-md"><MessageCircle size={12} /> Falar com o fotografo</button>}<button onClick={handleDownloadRedirect} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><Download size={12} /> Baixar</button></div></div>
-          {album.photos?.length > 0 ? (
-            <div ref={galleryRef} className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-3 space-y-2 sm:space-y-3">
-              {album.photos.slice(0, visiblePhotos).map(function(p, i) { 
-                return <div key={i} className="relative group cursor-pointer break-inside-avoid rounded-lg overflow-hidden bg-gray-900 border border-white/10"><img src={p} alt={'Foto ' + (i+1)} className="w-full h-auto object-cover" loading="lazy" onClick={function() { setLightboxPhoto(p); }} /><div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center" onClick={function() { setLightboxPhoto(p); }}><Eye size={18} className="text-white opacity-0 group-hover:opacity-100" /></div><button onClick={function(e) { e.stopPropagation(); handleSharePhoto(p); }} className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80" title="Compartilhar"><Share2 size={14} /></button></div>;
-              })}
-            </div>
-          ) : <div className="text-center py-14 text-gray-500"><ImageIcon size={36} className="mx-auto mb-2 opacity-50" /><p className="text-xs">Nenhuma foto.</p></div>}
-          {visiblePhotos < (album.photos?.length || 0) && <div id="scroll-sentinel" className="flex justify-center py-5">{isLoadingMore ? <Loader2 size={18} className="animate-spin text-[#d4af37]" /> : <p className="text-gray-500 text-xs">Rolando...</p>}</div>}
-        </div>
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4"><div className="flex items-center justify-between mb-3 sm:mb-4"><h2 className="text-sm sm:text-base font-semibold text-gray-200">Galeria ({(album.photos || []).length})</h2><div className="flex gap-1.5 sm:gap-2">{hasWhatsApp && <button onClick={handleWhatsAppContact} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#25D366] hover:bg-[#20b859] text-white font-semibold px-3 py-1.5 rounded-full shadow-md"><MessageCircle size={12} /> Falar com o fotografo</button>}<button onClick={handleDownloadRedirect} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><Download size={12} /> Baixar</button></div></div>
+          {album.photos?.length > 0 ? (<div ref={galleryRef} className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-3 space-y-2 sm:space-y-3">{album.photos.slice(0, visiblePhotos).map(function(p, i) { return <div key={i} className="relative group cursor-pointer break-inside-avoid rounded-lg overflow-hidden bg-gray-900 border border-white/10"><img src={p} alt={'Foto ' + (i+1)} className="w-full h-auto object-cover" loading="lazy" onClick={function() { setLightboxPhoto(p); }} /><div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center" onClick={function() { setLightboxPhoto(p); }}><Eye size={18} className="text-white opacity-0 group-hover:opacity-100" /></div><button onClick={function(e) { e.stopPropagation(); handleSharePhoto(p); }} className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80" title="Compartilhar"><Share2 size={14} /></button></div>; })}</div>) : <div className="text-center py-14 text-gray-500"><ImageIcon size={36} className="mx-auto mb-2 opacity-50" /><p className="text-xs">Nenhuma foto.</p></div>}
+          {visiblePhotos < (album.photos?.length || 0) && <div id="scroll-sentinel" className="flex justify-center py-5">{isLoadingMore ? <Loader2 size={18} className="animate-spin text-[#d4af37]" /> : <p className="text-gray-500 text-xs">Rolando...</p>}</div>}</div>
       )}
       {activeTab === 'stories' && (
         <div className="fixed inset-0 z-50 bg-[#0a0a0a] flex items-center justify-center sm:p-6">
@@ -454,16 +402,9 @@ function ClientApp(props) {
             <div className="relative w-full h-full sm:max-w-[400px] sm:max-h-[90vh] sm:rounded-[40px] bg-black overflow-hidden shadow-2xl sm:border-[8px] border-neutral-900 flex flex-col">
               <div className="absolute top-4 sm:top-5 inset-x-0 z-30 px-1 flex justify-center">
                 <div ref={storyBarsRef} style={{ display: 'flex', gap: '2px', overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', paddingBottom: '2px', maxWidth: 'calc(100% - 20px)', justifyContent: 'center' }}>
-                  {album.photos.map(function(_, idx) {
-                    var distance = Math.abs(idx - currentStoryIdx);
-                    var opacity; if (distance === 0) { opacity = 1; } else if (distance <= 3) { opacity = 0.7 - (distance * 0.1); } else if (distance <= 8) { opacity = 0.4 - ((distance - 3) * 0.05); } else { opacity = 0.1; }
-                    var barWidth; if (distance === 0) { barWidth = '10px'; } else if (distance <= 2) { barWidth = '6px'; } else { barWidth = '4px'; }
-                    var width; if (idx < currentStoryIdx) width = '100%'; else if (idx === currentStoryIdx) width = (storyProgress * 100) + '%'; else width = '0%';
-                    return (<div key={idx} style={{ minWidth: barWidth, width: barWidth, height: '3px', flexShrink: 0, opacity: opacity, transition: 'opacity 0.3s ease, width 0.3s ease' }} className="bg-white/30 rounded-full overflow-hidden"><div className="h-full bg-white rounded-full" style={{ width: width, transition: idx === currentStoryIdx ? 'none' : 'width 0.3s ease' }} /></div>);
-                  })}
+                  {album.photos.map(function(_, idx) { var distance = Math.abs(idx - currentStoryIdx); var opacity; if (distance === 0) { opacity = 1; } else if (distance <= 3) { opacity = 0.7 - (distance * 0.1); } else if (distance <= 8) { opacity = 0.4 - ((distance - 3) * 0.05); } else { opacity = 0.1; } var barWidth; if (distance === 0) { barWidth = '10px'; } else if (distance <= 2) { barWidth = '6px'; } else { barWidth = '4px'; } var width; if (idx < currentStoryIdx) width = '100%'; else if (idx === currentStoryIdx) width = (storyProgress * 100) + '%'; else width = '0%'; return (<div key={idx} style={{ minWidth: barWidth, width: barWidth, height: '3px', flexShrink: 0, opacity: opacity, transition: 'opacity 0.3s ease, width 0.3s ease' }} className="bg-white/30 rounded-full overflow-hidden"><div className="h-full bg-white rounded-full" style={{ width: width, transition: idx === currentStoryIdx ? 'none' : 'width 0.3s ease' }} /></div>); })}
                 </div>
-                <div style={{ position: 'absolute', top: 0, left: 0, width: '20px', height: '100%', background: 'linear-gradient(to right, rgba(10,10,10,1), rgba(10,10,10,0))', pointerEvents: 'none', zIndex: 1 }} />
-                <div style={{ position: 'absolute', top: 0, right: 0, width: '20px', height: '100%', background: 'linear-gradient(to left, rgba(10,10,10,1), rgba(10,10,10,0))', pointerEvents: 'none', zIndex: 1 }} />
+                <div style={{ position: 'absolute', top: 0, left: 0, width: '20px', height: '100%', background: 'linear-gradient(to right, rgba(10,10,10,1), rgba(10,10,10,0))', pointerEvents: 'none', zIndex: 1 }} /><div style={{ position: 'absolute', top: 0, right: 0, width: '20px', height: '100%', background: 'linear-gradient(to left, rgba(10,10,10,1), rgba(10,10,10,0))', pointerEvents: 'none', zIndex: 1 }} />
               </div>
               <div className="absolute top-8 sm:top-9 inset-x-4 sm:inset-x-5 flex justify-between items-center z-30 px-1">
                 <div className="flex items-center gap-2.5"><div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden border border-white/20 bg-neutral-800 p-0.5"><img src={album.profileImage || album.photos[0]} alt="Perfil" className="w-full h-full object-cover rounded-full" /></div><div className="flex flex-col"><span className="text-xs sm:text-sm font-semibold text-white leading-none mb-0.5">{album.clientName}</span><span className="text-[9px] sm:text-[11px] text-white/80 font-medium leading-none">{album.subtitle || 'Album Fotografico'}</span></div></div>
@@ -541,7 +482,7 @@ function AdminEditor(props) {
   var hrv = function() { setVideoFile(null); setVideoPreview(''); };
   var hrm = function() { setSmf(null); setSmp(''); setMst(0); setMet(null); setAd(null); };
   var hrp = function(i) { var np = up.slice(); np.splice(i, 1); setUp(np); if (sf.indexOf(i) !== -1) setSf(sf.filter(function(x) { return x !== i; })); if (sp === up[i]) setSp(''); };
-  var hs = async function(e) { e.preventDefault(); if (!formData.clientName) { alert("Preencha o Nome do Cliente."); return; } if (!formData.googleDriveUrl) { alert("Insira o link do Google Drive."); return; } if (!up.length) { alert("Selecione pelo menos uma foto."); return; } setIsSaving(true); setUpr(0); setUploadStatus('Iniciando...'); try { var aid = formData.shortId, urls = []; var total = up.length + (smf ? 1 : 0) + (videoFile ? 1 : 0) + (ll && ll.indexOf('http') !== 0 ? 1 : 0) + (lb || []).length; var step = 0; for (var i = 0; i < up.length; i++) { var ph = up[i]; if (ph.startsWith('http')) { urls.push(ph); step++; continue; } var u = await uploadToCloudinary(ph, aid, 'image'); if (!u) throw new Error("Falha ao enviar imagem."); urls.push(u); step++; setUpr(Math.round((step / total) * 100)); setUploadStatus('Enviando fotos...'); } var fM = smp; if (smf) { setUploadStatus('Enviando musica...'); fM = await uploadToCloudinary(smf, aid, 'video'); if (!fM) throw new Error("Falha ao enviar musica."); step++; setUpr(Math.round((step / total) * 100)); } var fVideo = videoPreview; if (videoFile) { setUploadStatus('Enviando video... Isso pode levar alguns minutos.'); setUpr(Math.round((step / total) * 100)); fVideo = await uploadToCloudinary(videoFile, aid, 'video'); if (!fVideo) throw new Error("Falha ao enviar video."); step++; setUpr(Math.round((step / total) * 100)); } var fL = ll; if (ll && ll.indexOf('http') !== 0) { fL = await uploadToCloudinary(ll, aid, 'image'); if (!fL) throw new Error("Falha ao enviar logo."); step++; } var fBgs = []; for (var j = 0; j < (lb || []).length; j++) { var bg = lb[j]; if (bg.startsWith('http')) fBgs.push(bg); else { var ub = await uploadToCloudinary(bg, aid, 'image'); if (!ub) throw new Error("Falha ao enviar fundo."); fBgs.push(ub); } step++; } var uf = []; for (var k = 0; k < sf.length; k++) { var oi = sf[k], ni = urls.findIndex(function(u) { return u === up[oi]; }); if (ni !== -1) uf.push(ni); } var fP = sp; if (sp && sp.indexOf('http') !== 0) { var pi = urls.findIndex(function(u) { return u === sp; }); fP = pi !== -1 ? urls[pi] : urls[0]; } else if (!fP && urls.length) fP = urls[0]; var fd = Object.assign({}, formData, { photos: urls, featuredPhotos: uf, profileImage: fP, loaderLogo: fL, loaderBackgrounds: fBgs, storyMusic: fM || '', musicStartTime: mst || 0, musicEndTime: met || ad || null, introVideo: fVideo || '', expiryDate: formData.expiryDate || '', updatedAt: new Date().toISOString() }); setUpr(95); setUploadStatus('Salvando na planilha...'); if (await saveAlbumToSheets(fd)) { setUpr(100); setUploadStatus('✅ Concluído!'); setTimeout(function() { onSave(fd); alert('Album salvo!'); }, 500); } else throw new Error("Falha ao salvar."); } catch (er) { alert('Erro: ' + er.message); } finally { setIsSaving(false); setUpr(0); setUploadStatus(''); } };
+  var hs = async function(e) { e.preventDefault(); if (!formData.clientName) { alert("Preencha o Nome do Cliente."); return; } if (!formData.googleDriveUrl) { alert("Insira o link do Google Drive."); return; } if (!up.length) { alert("Selecione pelo menos uma foto."); return; } setIsSaving(true); setUpr(0); setUploadStatus('Iniciando...'); try { var aid = formData.shortId, urls = []; var total = up.length + (smf ? 1 : 0) + (videoFile ? 1 : 0) + (ll && ll.indexOf('http') !== 0 ? 1 : 0) + (lb || []).length; var step = 0; for (var i = 0; i < up.length; i++) { var ph = up[i]; if (ph.startsWith('http')) { urls.push(ph); step++; continue; } var u = await uploadToCloudinary(ph, aid, 'image'); if (!u) throw new Error("Falha ao enviar imagem."); urls.push(u); step++; setUpr(Math.round((step / total) * 100)); setUploadStatus('Enviando fotos...'); } var fM = smp; if (smf) { setUploadStatus('Enviando musica...'); fM = await uploadToCloudinary(smf, aid, 'video'); if (!fM) throw new Error("Falha ao enviar musica."); step++; setUpr(Math.round((step / total) * 100)); } var fVideo = videoPreview; if (videoFile) { setUploadStatus('Enviando video...'); setUpr(Math.round((step / total) * 100)); fVideo = await uploadToCloudinary(videoFile, aid, 'video'); if (!fVideo) throw new Error("Falha ao enviar video."); step++; setUpr(Math.round((step / total) * 100)); } var fL = ll; if (ll && ll.indexOf('http') !== 0) { fL = await uploadToCloudinary(ll, aid, 'image'); if (!fL) throw new Error("Falha ao enviar logo."); step++; } var fBgs = []; for (var j = 0; j < (lb || []).length; j++) { var bg = lb[j]; if (bg.startsWith('http')) fBgs.push(bg); else { var ub = await uploadToCloudinary(bg, aid, 'image'); if (!ub) throw new Error("Falha ao enviar fundo."); fBgs.push(ub); } step++; } var uf = []; for (var k = 0; k < sf.length; k++) { var oi = sf[k], ni = urls.findIndex(function(u) { return u === up[oi]; }); if (ni !== -1) uf.push(ni); } var fP = sp; if (sp && sp.indexOf('http') !== 0) { var pi = urls.findIndex(function(u) { return u === sp; }); fP = pi !== -1 ? urls[pi] : urls[0]; } else if (!fP && urls.length) fP = urls[0]; var fd = Object.assign({}, formData, { photos: urls, featuredPhotos: uf, profileImage: fP, loaderLogo: fL, loaderBackgrounds: fBgs, storyMusic: fM || '', musicStartTime: mst || 0, musicEndTime: met || ad || null, introVideo: fVideo || '', expiryDate: formData.expiryDate || '', updatedAt: new Date().toISOString() }); setUpr(95); setUploadStatus('Salvando na planilha...'); if (await saveAlbumToSheets(fd)) { setUpr(100); setUploadStatus('✅ Concluído!'); setTimeout(function() { onSave(fd); alert('Album salvo!'); }, 500); } else throw new Error("Falha ao salvar."); } catch (er) { alert('Erro: ' + er.message); } finally { setIsSaving(false); setUpr(0); setUploadStatus(''); } };
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] py-6 sm:py-8 px-3 sm:px-4">
@@ -555,8 +496,8 @@ function AdminEditor(props) {
               <div><label className="block text-xs font-medium text-gray-700 mb-1">PIN de Acesso</label><input type="text" value={formData.pin} onChange={function(e) { setFormData(Object.assign({}, formData, { pin: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: 1234" /></div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Link do Google Drive (Download)</label><input type="url" value={formData.googleDriveUrl} onChange={function(e) { setFormData(Object.assign({}, formData, { googleDriveUrl: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="https://drive.google.com/drive/folders/..." /></div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">📱 WhatsApp</label><input type="tel" value={formData.whatsappNumber || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { whatsappNumber: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none" placeholder="Ex: 11912345678" /></div>
-              <div className="p-4 border border-orange-200 rounded-xl bg-orange-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">📅 Prazo de Expiracao do Album (opcional)</label><p className="text-xs text-gray-500 mb-3">Defina uma data limite para o cliente acessar o album.</p><div className="flex items-center gap-2"><Calendar size={16} className="text-orange-500" /><input type="date" value={formData.expiryDate || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { expiryDate: e.target.value })); }} className="w-full border border-orange-200 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none" /></div></div>
-              <div className="p-4 border border-blue-200 rounded-xl bg-blue-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">🎬 Video de Abertura (Upload MP4)</label><p className="text-xs text-gray-500 mb-3">Faça upload do video de abertura.</p>{videoPreview ? (<div className="space-y-3"><div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-blue-200"><Video size={18} className="text-blue-600" /><div className="flex-1"><p className="text-xs font-medium">{videoFile ? videoFile.name : 'Video carregado'}</p></div><button type="button" onClick={hrv} className="text-red-500 p-1"><Trash2 size={14} /></button></div><video controls className="w-full rounded-lg" src={videoPreview} style={{ maxHeight: '200px' }} /></div>) : (<label className="cursor-pointer inline-block"><div className="bg-blue-600 text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-blue-700"><Video size={14} /> Selecionar Video (MP4)</div><input type="file" accept="video/*" onChange={hvu} className="hidden" disabled={iu || isSaving} /></label>)}</div>
+              <div className="p-4 border border-orange-200 rounded-xl bg-orange-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">📅 Prazo de Expiracao do Album (opcional)</label><div className="flex items-center gap-2"><Calendar size={16} className="text-orange-500" /><input type="date" value={formData.expiryDate || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { expiryDate: e.target.value })); }} className="w-full border border-orange-200 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none" /></div></div>
+              <div className="p-4 border border-blue-200 rounded-xl bg-blue-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">🎬 Video de Abertura (Upload MP4)</label>{videoPreview ? (<div className="space-y-3"><div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-blue-200"><Video size={18} className="text-blue-600" /><div className="flex-1"><p className="text-xs font-medium">{videoFile ? videoFile.name : 'Video carregado'}</p></div><button type="button" onClick={hrv} className="text-red-500 p-1"><Trash2 size={14} /></button></div><video controls className="w-full rounded-lg" src={videoPreview} style={{ maxHeight: '200px' }} /></div>) : (<label className="cursor-pointer inline-block"><div className="bg-blue-600 text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-blue-700"><Video size={14} /> Selecionar Video (MP4)</div><input type="file" accept="video/*" onChange={hvu} className="hidden" disabled={iu || isSaving} /></label>)}</div>
               <div className="p-4 border border-purple-200 rounded-xl bg-purple-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">🎵 Musica dos Stories</label><p className="text-xs text-gray-500 mb-3"><strong className="text-purple-700">A musica so toca nos Stories.</strong></p>{smp ? (<div className="space-y-3"><div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-purple-200"><Music size={18} className="text-purple-600" /><div className="flex-1"><p className="text-xs font-medium">{smf ? smf.name : 'Musica carregada'}</p></div><button type="button" onClick={hrm} className="text-red-500 p-1"><Trash2 size={14} /></button></div><audio controls className="w-full" src={smp} /><AudioTrimmer audioUrl={smp} startTime={mst} endTime={met || ad} duration={ad} onStartChange={setMst} onEndChange={setMet} /></div>) : (<label className="cursor-pointer inline-block"><div className="bg-purple-600 text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-purple-700"><Music size={14} /> Selecionar Musica (MP3)</div><input type="file" accept="audio/*" onChange={hmu} className="hidden" /></label>)}</div>
               <div className="p-4 border-2 border-dashed border-[#d4af37] rounded-xl bg-yellow-50/20"><label className="block text-sm font-semibold text-gray-900 mb-2">📸 Fotos da Galeria</label><label className="cursor-pointer"><div className="w-full bg-[#d4af37] text-black font-semibold rounded-lg py-2.5 px-4 flex items-center justify-center gap-2 hover:bg-[#c4a137] text-sm"><FolderUp size={16} />Selecionar Fotos</div><input type="file" accept="image/*" multiple onChange={hfu} className="hidden" /></label>{(up || []).length > 0 && <div className="mt-3"><p className="text-xs font-medium mb-2">{(up || []).length} foto(s)</p><div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-80 overflow-y-auto p-1.5">{(up || []).map(function(p, i) { return <div key={i} className="relative group"><img src={p} className="w-full aspect-square object-cover rounded-lg border" /><button type="button" onClick={function() { hrp(i); }} className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100"><Trash2 size={10} /></button></div>; })}</div></div>}</div>
               {(up || []).length > 0 && (<><div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50"><label className="block text-sm font-semibold mb-2">📷 Foto de Perfil</label><div className="flex justify-center mb-3"><div className="w-20 h-20 rounded-full overflow-hidden border-3 border-[#d4af37] bg-neutral-900 p-0.5">{sp ? <img src={sp} className="w-full h-full object-cover rounded-full" /> : <div className="w-full h-full bg-neutral-800 rounded-full flex items-center justify-center"><Camera size={24} className="text-gray-400" /></div>}</div></div><div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto">{(up || []).slice(0, 50).map(function(p, i) { return <div key={i} onClick={function() { setSp(p); }} className={'relative cursor-pointer rounded-lg overflow-hidden ' + (sp === p ? 'ring-3 ring-[#d4af37] scale-95' : 'hover:scale-95')}><img src={p} className="w-full aspect-square object-cover" />{sp === p && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><CheckCircle size={20} className="text-[#d4af37]" /></div>}</div>; })}</div></div><div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50"><label className="block text-sm font-semibold mb-2">⭐ Fotos em Destaque</label><p className="text-xs text-gray-500 mb-3">Selecione ate 5 fotos para o fundo da tela de PIN</p><div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto">{(up || []).slice(0, 50).map(function(p, i) { var isSel = sf.indexOf(i) !== -1; return <div key={i} onClick={function() { if (isSel) setSf(sf.filter(function(x) { return x !== i; })); else if (sf.length < 5) setSf(sf.concat([i])); }} className={'relative cursor-pointer rounded-lg overflow-hidden ' + (isSel ? 'ring-3 ring-[#d4af37] scale-95' : 'hover:scale-95')}><img src={p} className="w-full aspect-square object-cover" />{isSel && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><CheckCircle size={20} className="text-[#d4af37]" /></div>}</div>; })}</div></div></>)}
