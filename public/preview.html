@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Carregando...</title>
+  <style>
+    body { margin: 0; background: #0a0a0a; display: flex; justify-content: center; align-items: center; height: 100vh; }
+    .loader { color: #d4af37; font-family: Arial, sans-serif; text-align: center; }
+    .loader img { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #d4af37; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
+  <div class="loader">
+    <img id="albumImage" src="" alt="Carregando..." />
+    <h2 id="albumTitle" style="color:white;margin:10px 0;">Carregando álbum...</h2>
+    <p id="albumDesc" style="color:#999;"></p>
+  </div>
+
+  <script>
+    // Pegar o ID do álbum da URL
+    var hash = window.location.hash || '';
+    var albumId = hash.replace('#/album/', '');
+    
+    if (albumId) {
+      var apiUrl = 'https://script.google.com/macros/s/AKfycbwaNkmrY33Uf57_U1w5u1DRxNegt1xff9Us5hvicZiMVcXQj4d4Fe-wqwL_tSLdreY/exec?id=' + albumId;
+      
+      fetch(apiUrl)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+          if (data.success && data.album) {
+            var album = data.album;
+            var photoUrl = album.profileImage || (album.photos && album.photos[0]) || '';
+            
+            // Atualizar página com meta tags dinâmicas
+            document.title = album.clientName || 'Álbum Fotográfico';
+            
+            // Atualizar meta tags
+            var metaTags = {
+              'og:title': album.clientName || 'Álbum Fotográfico',
+              'og:description': album.subtitle || 'Veja minhas fotos neste álbum exclusivo',
+              'og:image': photoUrl,
+              'og:image:width': '1200',
+              'og:image:height': '630',
+              'og:url': window.location.href,
+              'og:type': 'website',
+              'twitter:card': 'summary_large_image',
+              'twitter:title': album.clientName || 'Álbum Fotográfico',
+              'twitter:image': photoUrl,
+              'description': album.subtitle || ''
+            };
+            
+            Object.keys(metaTags).forEach(function(name) {
+              var isProperty = name.startsWith('og:') || name.startsWith('twitter:');
+              var attr = isProperty ? 'property' : 'name';
+              var meta = document.querySelector('meta[' + attr + '="' + name + '"]');
+              if (!meta) {
+                meta = document.createElement('meta');
+                meta.setAttribute(attr, name);
+                document.head.appendChild(meta);
+              }
+              meta.setAttribute('content', metaTags[name]);
+            });
+            
+            // Atualizar visual
+            document.getElementById('albumImage').src = photoUrl;
+            document.getElementById('albumTitle').textContent = album.clientName;
+            document.getElementById('albumDesc').textContent = album.subtitle || '';
+            
+            // Redirecionar para o app React após 1 segundo
+            setTimeout(function() {
+              window.location.href = window.location.origin + '/#/album/' + albumId;
+            }, 1000);
+          }
+        })
+        .catch(function() {
+          window.location.href = window.location.origin + '/#/album/' + albumId;
+        });
+    }
+  </script>
+</body>
+</html>
