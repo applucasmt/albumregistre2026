@@ -215,6 +215,10 @@ function ClientApp(props) {
   var expiryDateFormatted = formatExpiryDate(album);
   var daysRemaining = getDaysRemaining(album);
   
+  // Estado para a notificação de buffering
+  var _useStateBuffer = useState(false), showBuffering = _useStateBuffer[0], setShowBuffering = _useStateBuffer[1];
+  var bufferTimeoutRef = useRef(null);
+  
   var featuredList = useMemo(function() {
     return album.featuredPhotos?.length > 0 ? album.featuredPhotos.map(function(idx) { return album.photos[idx]; }).filter(Boolean) : album.photos?.slice(0, 5) || [];
   }, [album]);
@@ -232,33 +236,44 @@ function ClientApp(props) {
     }
   }, [isAuthenticated, album.introVideo, videoEnded, videoError, albumExpired]);
   
-  // Gerenciar eventos do vídeo - overlay só aparece quando realmente necessário
+  // Gerenciar eventos do vídeo - notificação de buffering em popup pequeno
   useEffect(function() {
     if (showIntroVideo && videoRef.current) {
       var video = videoRef.current;
-      var stallTimeout = null;
       var hasStartedPlaying = false;
+      var bufferCheckInterval = null;
       
       var handlePlaying = function() {
         hasStartedPlaying = true;
         setShowVideoOverlay(false);
+        setShowBuffering(false);
+        if (bufferCheckInterval) {
+          clearInterval(bufferCheckInterval);
+          bufferCheckInterval = null;
+        }
+        if (bufferTimeoutRef.current) {
+          clearTimeout(bufferTimeoutRef.current);
+          bufferTimeoutRef.current = null;
+        }
       };
       
       var handleWaiting = function() {
-        // Só mostra overlay de buffering se o vídeo já começou a tocar
+        // Mostra notificação de buffering apenas se o vídeo já começou a tocar
         if (hasStartedPlaying) {
           // Pequeno delay para evitar flickering
-          if (stallTimeout) clearTimeout(stallTimeout);
-          stallTimeout = setTimeout(function() {
-            if (video.readyState < 3) {
-              setShowVideoOverlay(true);
-            }
-          }, 500);
+          if (bufferTimeoutRef.current) clearTimeout(bufferTimeoutRef.current);
+          bufferTimeoutRef.current = setTimeout(function() {
+            setShowBuffering(true);
+          }, 300);
         }
       };
       
       var handleCanPlay = function() {
-        if (stallTimeout) clearTimeout(stallTimeout);
+        if (bufferTimeoutRef.current) {
+          clearTimeout(bufferTimeoutRef.current);
+          bufferTimeoutRef.current = null;
+        }
+        setShowBuffering(false);
         if (hasStartedPlaying) {
           setShowVideoOverlay(false);
         }
@@ -266,17 +281,30 @@ function ClientApp(props) {
       
       var handleStalled = function() {
         if (hasStartedPlaying) {
-          if (stallTimeout) clearTimeout(stallTimeout);
-          stallTimeout = setTimeout(function() {
-            setShowVideoOverlay(true);
-          }, 1000);
+          if (bufferTimeoutRef.current) clearTimeout(bufferTimeoutRef.current);
+          bufferTimeoutRef.current = setTimeout(function() {
+            setShowBuffering(true);
+          }, 500);
         }
       };
       
       var handleCanPlayThrough = function() {
-        // Vídeo carregou o suficiente - remove overlay
-        if (stallTimeout) clearTimeout(stallTimeout);
+        if (bufferTimeoutRef.current) {
+          clearTimeout(bufferTimeoutRef.current);
+          bufferTimeoutRef.current = null;
+        }
+        setShowBuffering(false);
         setShowVideoOverlay(false);
+      };
+      
+      // Monitora o progresso do buffering periodicamente
+      var checkBufferProgress = function() {
+        if (video && hasStartedPlaying) {
+          // Se o vídeo está pausado por buffering e não está no fim
+          if (video.paused && !video.ended && video.readyState < 3 && video.currentTime > 0) {
+            setShowBuffering(true);
+          }
+        }
       };
       
       video.addEventListener('playing', handlePlaying);
@@ -284,6 +312,9 @@ function ClientApp(props) {
       video.addEventListener('canplay', handleCanPlay);
       video.addEventListener('stalled', handleStalled);
       video.addEventListener('canplaythrough', handleCanPlayThrough);
+      
+      // Verifica a cada 2 segundos se o vídeo está com buffering
+      bufferCheckInterval = setInterval(checkBufferProgress, 2000);
       
       video.play().catch(function() {
         setShowVideoOverlay(true);
@@ -295,7 +326,8 @@ function ClientApp(props) {
         video.removeEventListener('canplay', handleCanPlay);
         video.removeEventListener('stalled', handleStalled);
         video.removeEventListener('canplaythrough', handleCanPlayThrough);
-        if (stallTimeout) clearTimeout(stallTimeout);
+        if (bufferCheckInterval) clearInterval(bufferCheckInterval);
+        if (bufferTimeoutRef.current) clearTimeout(bufferTimeoutRef.current);
       };
     }
   }, [showIntroVideo]);
@@ -345,7 +377,7 @@ function ClientApp(props) {
   var handleWhatsAppContact = function() { if (album.whatsappNumber?.trim()) { var p = album.whatsappNumber.replace(/\D/g, ''); if (p.indexOf('55') !== 0) p = '55' + p; window.open('https://wa.me/' + p + '?text=' + encodeURIComponent('Ola! Vi seu album "' + album.clientName + '" e gostaria de saber mais informacoes.'), '_blank'); } };
   var handleStoryNavigation = function(d) { if (d === 'prev' && currentStoryIdx > 0) { setCurrentStoryIdx(function(v) { return v - 1; }); setStoryProgress(0); storyStartTimeRef.current = Date.now(); } else if (d === 'next') { if (currentStoryIdx < album.photos.length - 1) { setCurrentStoryIdx(function(v) { return v + 1; }); setStoryProgress(0); storyStartTimeRef.current = Date.now(); } else { setIsStoryPlaying(false); setActiveTab('gallery'); } } };
   var toggleMute = function(e) { e.stopPropagation(); setIsMuted(!isMuted); };
-  var handleVideoEnded = function() { setShowIntroVideo(false); setVideoEnded(true); setShowVideoOverlay(false); setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); };
+  var handleVideoEnded = function() { setShowIntroVideo(false); setVideoEnded(true); setShowVideoOverlay(false); setShowBuffering(false); setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); };
   var handleSkipVideo = function() { handleVideoEnded(); };
   var handleVideoError = function() { setVideoError(true); setShowIntroVideo(false); handleVideoEnded(); };
   var handleSharePhoto = function(photoUrl) { setSharePhotoUrl(photoUrl); setShowSharePopup(true); };
@@ -353,32 +385,66 @@ function ClientApp(props) {
   var handleShareCurrentStory = function() { if (album.photos && album.photos[currentStoryIdx]) { handleSharePhoto(album.photos[currentStoryIdx]); } };
   var hasWhatsApp = album.whatsappNumber?.trim();
 
-  // TELA DE VÍDEO INTRO - CORRIGIDA (overlay não fica sobre o vídeo)
+  // TELA DE VÍDEO INTRO - com notificação de buffering em popup pequeno
   if (isAuthenticated && showIntroVideo && album.introVideo && !albumExpired) {
     var orientation = detectVideoOrientation(album.introVideo);
     var isVertical = orientation === 'vertical';
     return (
       <div onClick={function() { if (showVideoOverlay) setShowVideoOverlay(false); }} style={{ margin: 0, padding: 0, background: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100dvh', width: '100vw', position: 'fixed', top: 0, left: 0, zIndex: 9999, overflow: 'hidden', cursor: showVideoOverlay ? 'pointer' : 'default' }}>
-        <style>{'@keyframes pulse-play{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.08);opacity:1}}'}</style>
+        <style>{'@keyframes pulse-play{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.08);opacity:1}}@keyframes slideDown{0%{transform:translateY(-20px);opacity:0}100%{transform:translateY(0);opacity:1}}'}</style>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', position: 'relative' }}>
           <div style={{ width: isVertical ? 'min(100%, 420px)' : 'min(100%, 90vw)', maxHeight: '100dvh', aspectRatio: isVertical ? '9/16' : '16/9', position: 'relative', overflow: 'hidden', borderRadius: isVertical ? '20px' : '12px', background: '#000', boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
             <video ref={videoRef} src={album.introVideo} autoPlay playsInline muted={false} preload="auto" onEnded={handleVideoEnded} onError={handleVideoError} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
             
-            {/* Overlay APENAS quando o vídeo NÃO começou a tocar */}
-            {showVideoOverlay && (
+            {/* Notificação de buffering - popup pequeno no topo */}
+            {showBuffering && (
+              <div style={{ 
+                position: 'absolute', 
+                top: '16px', 
+                left: '50%', 
+                transform: 'translateX(-50%)', 
+                zIndex: 20, 
+                animation: 'slideDown 0.3s ease-out',
+                background: 'rgba(0,0,0,0.75)',
+                backdropFilter: 'blur(12px)',
+                borderRadius: '12px',
+                padding: '8px 16px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                border: '1px solid rgba(255,255,255,0.08)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+                maxWidth: '90%'
+              }}>
+                <Loader2 size={16} className="animate-spin" style={{ color: '#d4af37' }} />
+                <span style={{ color: 'white', fontSize: '12px', fontWeight: 500, letterSpacing: '0.3px' }}>
+                  Carregando vídeo...
+                </span>
+                <span style={{ 
+                  color: 'rgba(255,255,255,0.3)', 
+                  fontSize: '10px', 
+                  marginLeft: '4px'
+                }}>
+                  aguarde
+                </span>
+              </div>
+            )}
+            
+            {/* Overlay de carregamento inicial - APENAS quando o vídeo NÃO começou a tocar */}
+            {showVideoOverlay && !showBuffering && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', zIndex: 10, pointerEvents: 'none' }}>
                 <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(212,175,55,0.25)', border: '3px solid rgba(212,175,55,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', animation: 'pulse-play 2s ease-in-out infinite' }}>
                   <Play size={38} fill="rgba(212,175,55,0.95)" color="rgba(212,175,55,0.95)" style={{ marginLeft: '3px' }} />
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  <p style={{ color: 'white', fontSize: '1.05rem', fontWeight: 600, margin: '0 0 6px 0' }}>Aguarde o video esta carregando</p>
-                  <p style={{ color: 'rgba(212,175,55,0.9)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>o video sera iniciado automaticamente</p>
+                  <p style={{ color: 'white', fontSize: '1.05rem', fontWeight: 600, margin: '0 0 6px 0' }}>Aguarde o vídeo está carregando</p>
+                  <p style={{ color: 'rgba(212,175,55,0.9)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>o vídeo será iniciado automaticamente</p>
                 </div>
               </div>
             )}
           </div>
         </div>
-        <button onClick={function(e) { e.stopPropagation(); handleSkipVideo(); }} style={{ position: 'fixed', bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', color: 'white', padding: '0.7rem 1.3rem', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}><SkipForward size={16} /> Pular Video</button>
+        <button onClick={function(e) { e.stopPropagation(); handleSkipVideo(); }} style={{ position: 'fixed', bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', color: 'white', padding: '0.7rem 1.3rem', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}><SkipForward size={16} /> Pular Vídeo</button>
       </div>
     );
   }
