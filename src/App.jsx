@@ -40,7 +40,6 @@ function detectVideoOrientation(url) {
   return 'vertical';
 }
 
-// Upload de vídeo usando XMLHttpRequest (resolve CORS)
 function uploadVideoToCloudinary(file, albumId) {
   return new Promise(function(resolve, reject) {
     var xhr = new XMLHttpRequest();
@@ -48,22 +47,9 @@ function uploadVideoToCloudinary(file, albumId) {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
     formData.append('folder', CLOUDINARY_CONFIG.folder + '/' + albumId);
-    
     xhr.open('POST', 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/video/upload', true);
-    
-    xhr.onload = function() {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        var data = JSON.parse(xhr.responseText);
-        resolve(data.secure_url);
-      } else {
-        reject(new Error('Erro no upload do video'));
-      }
-    };
-    
-    xhr.onerror = function() {
-      reject(new Error('Erro de rede ao enviar video'));
-    };
-    
+    xhr.onload = function() { if (xhr.status >= 200 && xhr.status < 300) { var data = JSON.parse(xhr.responseText); resolve(data.secure_url); } else { reject(new Error('Erro no upload do video')); } };
+    xhr.onerror = function() { reject(new Error('Erro de rede ao enviar video')); };
     xhr.send(formData);
   });
 }
@@ -71,20 +57,13 @@ function uploadVideoToCloudinary(file, albumId) {
 async function uploadToCloudinary(file, albumId, resourceType) {
   resourceType = resourceType || 'image';
   if (typeof file === 'string' && file.startsWith('http') && file.indexOf('cloudinary') !== -1) return file;
-  
-  // Para vídeos, usar XMLHttpRequest (resolve CORS)
-  if (resourceType === 'video' && file instanceof File) {
-    return await uploadVideoToCloudinary(file, albumId);
-  }
-  
+  if (resourceType === 'video' && file instanceof File) { return await uploadVideoToCloudinary(file, albumId); }
   try {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
     formData.append('folder', CLOUDINARY_CONFIG.folder + '/' + albumId);
-    const response = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/' + resourceType + '/upload', {
-      method: 'POST', body: formData
-    });
+    const response = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/' + resourceType + '/upload', { method: 'POST', body: formData });
     if (!response.ok) { const error = await response.json(); throw new Error(error.error?.message || 'Erro no upload'); }
     const data = await response.json();
     return data.secure_url;
@@ -95,99 +74,22 @@ function updateMetaTags(album) {
   if (!album) return;
   const photoUrl = album.profileImage || (album.photos && album.photos[0]) || '';
   document.title = album.clientName || 'Album';
-  const metaTags = [
-    { property: 'og:title', content: album.clientName || '' },
-    { property: 'og:image', content: photoUrl },
-    { name: 'description', content: album.subtitle || '' }
-  ];
-  metaTags.forEach(function(tag) {
-    var meta;
-    if (tag.property) {
-      meta = document.querySelector('meta[property="' + tag.property + '"]');
-      if (!meta) { meta = document.createElement('meta'); meta.setAttribute('property', tag.property); }
-    } else {
-      meta = document.querySelector('meta[name="' + tag.name + '"]');
-      if (!meta) { meta = document.createElement('meta'); meta.setAttribute('name', tag.name); }
-    }
-    meta.setAttribute('content', tag.content);
-    if (!meta.parentNode) document.head.appendChild(meta);
-  });
+  const metaTags = [{ property: 'og:title', content: album.clientName || '' }, { property: 'og:image', content: photoUrl }, { name: 'description', content: album.subtitle || '' }];
+  metaTags.forEach(function(tag) { var meta; if (tag.property) { meta = document.querySelector('meta[property="' + tag.property + '"]'); if (!meta) { meta = document.createElement('meta'); meta.setAttribute('property', tag.property); } } else { meta = document.querySelector('meta[name="' + tag.name + '"]'); if (!meta) { meta = document.createElement('meta'); meta.setAttribute('name', tag.name); } } meta.setAttribute('content', tag.content); if (!meta.parentNode) document.head.appendChild(meta); });
 }
 
-const saveAlbumToSheets = async function(album) {
-  try {
-    const response = await fetch(SHEETS_API_URL, { 
-      method: 'POST', mode: 'cors', 
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-      body: JSON.stringify({ action: 'save', id: album.shortId, album: album }) 
-    });
-    return (await response.json()).success;
-  } catch (e) { return false; }
-};
-
-const deleteAlbumFromSheets = async function(shortId) {
-  try {
-    const response = await fetch(SHEETS_API_URL, { 
-      method: 'POST', mode: 'cors', 
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-      body: JSON.stringify({ action: 'delete', id: shortId }) 
-    });
-    return (await response.json()).success;
-  } catch (e) { return false; }
-};
-
-const loadAlbumFromSheets = async function(shortId) {
-  try {
-    const response = await fetch(SHEETS_API_URL + '?id=' + shortId);
-    const data = await response.json();
-    return data.success && data.album ? data.album : null;
-  } catch (e) { return null; }
-};
-
-const loadAllAlbumsFromSheets = async function() {
-  try {
-    const response = await fetch(SHEETS_API_URL);
-    const data = await response.json();
-    return data.success && data.albums ? data.albums : {};
-  } catch (e) { return {}; }
-};
-
+const saveAlbumToSheets = async function(album) { try { const response = await fetch(SHEETS_API_URL, { method: 'POST', mode: 'cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'save', id: album.shortId, album: album }) }); return (await response.json()).success; } catch (e) { return false; } };
+const deleteAlbumFromSheets = async function(shortId) { try { const response = await fetch(SHEETS_API_URL, { method: 'POST', mode: 'cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'delete', id: shortId }) }); return (await response.json()).success; } catch (e) { return false; } };
+const loadAlbumFromSheets = async function(shortId) { try { const response = await fetch(SHEETS_API_URL + '?id=' + shortId); const data = await response.json(); return data.success && data.album ? data.album : null; } catch (e) { return null; } };
+const loadAllAlbumsFromSheets = async function() { try { const response = await fetch(SHEETS_API_URL); const data = await response.json(); return data.success && data.albums ? data.albums : {}; } catch (e) { return {}; } };
 const generateShortId = function() { return Math.random().toString(36).substring(2, 8); };
 
-function isAlbumExpired(album) {
-  if (!album) return false;
-  if (album._isExpired === true) return true;
-  if (album._isExpired === false) return false;
-  if (album.expiryDate) { var now = new Date(); var expiry = new Date(album.expiryDate); return now > expiry; }
-  return false;
-}
-
-function formatExpiryDate(album) {
-  var dateStr = album._expiryDate || album.expiryDate;
-  if (!dateStr) return null;
-  try { var d = new Date(dateStr); return d.toLocaleDateString('pt-BR'); } catch (e) { return dateStr; }
-}
-
-function getDaysRemaining(album) {
-  var dateStr = album._expiryDate || album.expiryDate;
-  if (!dateStr) return null;
-  try { var now = new Date(); var expiry = new Date(dateStr); var diff = expiry.getTime() - now.getTime(); return Math.ceil(diff / (1000 * 60 * 60 * 24)); } catch (e) { return null; }
-}
+function isAlbumExpired(album) { if (!album) return false; if (album._isExpired === true) return true; if (album._isExpired === false) return false; if (album.expiryDate) { var now = new Date(); var expiry = new Date(album.expiryDate); return now > expiry; } return false; }
+function formatExpiryDate(album) { var dateStr = album._expiryDate || album.expiryDate; if (!dateStr) return null; try { var d = new Date(dateStr); return d.toLocaleDateString('pt-BR'); } catch (e) { return dateStr; } }
+function getDaysRemaining(album) { var dateStr = album._expiryDate || album.expiryDate; if (!dateStr) return null; try { var now = new Date(); var expiry = new Date(dateStr); var diff = expiry.getTime() - now.getTime(); return Math.ceil(diff / (1000 * 60 * 60 * 24)); } catch (e) { return null; } }
 
 async function sharePhoto(photoUrl, album) {
-  try {
-    const response = await fetch(photoUrl);
-    const blob = await response.blob();
-    const file = new File([blob], 'foto.jpg', { type: 'image/jpeg' });
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], title: 'Foto do album ' + (album.clientName || 'Album'), text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸' });
-    } else if (navigator.share) {
-      await navigator.share({ title: 'Foto do album ' + (album.clientName || 'Album'), text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸', url: photoUrl });
-    } else {
-      var text = encodeURIComponent('Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸');
-      window.open('https://wa.me/?text=' + text + '%20' + encodeURIComponent(photoUrl), '_blank');
-    }
-  } catch (error) { console.log('Compartilhamento cancelado:', error); }
+  try { const response = await fetch(photoUrl); const blob = await response.blob(); const file = new File([blob], 'foto.jpg', { type: 'image/jpeg' }); if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Foto do album ' + (album.clientName || 'Album'), text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸' }); } else if (navigator.share) { await navigator.share({ title: 'Foto do album ' + (album.clientName || 'Album'), text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸', url: photoUrl }); } else { var text = encodeURIComponent('Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸'); window.open('https://wa.me/?text=' + text + '%20' + encodeURIComponent(photoUrl), '_blank'); } } catch (error) { console.log('Compartilhamento cancelado:', error); }
 }
 
 function SharePopup(props) {
@@ -196,14 +98,8 @@ function SharePopup(props) {
     <div style={{ position: 'fixed', inset: 0, zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }} onClick={props.onClose}>
       <div style={{ background: '#1a1a1a', borderRadius: '24px', padding: '28px 24px', maxWidth: '340px', width: '90%', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onClick={function(e) { e.stopPropagation(); }}>
         <h3 style={{ color: 'white', fontSize: '1.15rem', fontWeight: 600, marginBottom: '4px' }}>Compartilhar Foto</h3>
-        <p style={{ color: '#999', fontSize: '0.8rem', marginBottom: '20px' }}>Escolha o app para compartilhar</p>
-        <div style={{ width: '140px', height: '140px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto 20px', border: '2px solid rgba(255,255,255,0.1)' }}>
-          <img src={props.photoUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        </div>
-        <p style={{ color: '#888', fontSize: '0.7rem', marginBottom: '20px', lineHeight: '1.4' }}>Ao compartilhar, voce podera escolher entre<br/>WhatsApp, Instagram (Feed/Stories/Direct)<br/>e outros apps disponiveis.</p>
-        <button onClick={function() { sharePhoto(props.photoUrl, props.album); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: 'linear-gradient(135deg, #d4af37, #c4a137)', color: '#000', border: 'none', borderRadius: '16px', padding: '14px 20px', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', width: '100%', marginBottom: '12px', boxShadow: '0 4px 15px rgba(212,175,55,0.3)' }}>
-          <Share2 size={20} /> Compartilhar Agora
-        </button>
+        <div style={{ width: '140px', height: '140px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto 20px', border: '2px solid rgba(255,255,255,0.1)' }}><img src={props.photoUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>
+        <button onClick={function() { sharePhoto(props.photoUrl, props.album); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: 'linear-gradient(135deg, #d4af37, #c4a137)', color: '#000', border: 'none', borderRadius: '16px', padding: '14px 20px', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', width: '100%', marginBottom: '12px' }}><Share2 size={20} /> Compartilhar Agora</button>
         <button onClick={props.onClose} style={{ background: 'rgba(255,255,255,0.08)', color: '#ccc', border: 'none', borderRadius: '12px', padding: '10px 20px', fontSize: '0.85rem', cursor: 'pointer', width: '100%' }}>Cancelar</button>
       </div>
     </div>
@@ -228,8 +124,7 @@ function AudioTrimmer(props) {
       <div className="bg-white rounded-xl p-4 border border-purple-100">
         <div className="flex items-center justify-between mb-3"><div className="flex items-center gap-2"><Scissors size={16} className="text-purple-600" /><span className="text-sm font-medium text-gray-700">Selecionar trecho</span></div><div className="flex items-center gap-3"><span className="text-xs text-purple-600 font-medium">{sd.toFixed(1)}s</span><button type="button" onClick={function() { playPreview(startTime || 0, endTime || maxDuration); }} className="flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full"><Play size={12} fill="currentColor" /> Preview</button></div></div>
         <div ref={trackRef} className="relative h-14 bg-gray-100 rounded-lg cursor-pointer overflow-hidden select-none">
-          <div className="absolute inset-0 bg-gradient-to-r from-purple-200/30 to-purple-400/30" />
-          <div className="absolute top-0 bottom-0 bg-gradient-to-r from-purple-500/50 to-purple-600/50 border-l-2 border-r-2 border-purple-500" style={{ left: startPercent + '%', width: (endPercent - startPercent) + '%' }} />
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-200/30 to-purple-400/30" /><div className="absolute top-0 bottom-0 bg-gradient-to-r from-purple-500/50 to-purple-600/50 border-l-2 border-r-2 border-purple-500" style={{ left: startPercent + '%', width: (endPercent - startPercent) + '%' }} />
           <div className="absolute top-0 bottom-0 w-5 cursor-ew-resize z-10 flex items-center justify-center" style={{ left: 'calc(' + startPercent + '% - 10px)' }} onMouseDown={function(e) { handleMouseDown('start', e); }} onTouchStart={function(e) { handleTouchStart('start', e); }}><div className="w-2 h-10 bg-white rounded-full shadow-lg border border-purple-300" /><div className="absolute -top-5 bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">{(startTime || 0).toFixed(1)}s</div></div>
           <div className="absolute top-0 bottom-0 w-5 cursor-ew-resize z-10 flex items-center justify-center" style={{ left: 'calc(' + endPercent + '% - 10px)' }} onMouseDown={function(e) { handleMouseDown('end', e); }} onTouchStart={function(e) { handleTouchStart('end', e); }}><div className="w-2 h-10 bg-white rounded-full shadow-lg border border-purple-300" /><div className="absolute -top-5 bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">{(endTime || maxDuration).toFixed(1)}s</div></div>
         </div>
@@ -244,23 +139,15 @@ function LoginScreen(props) {
   var _useStateLogin = useState(''), username = _useStateLogin[0], setUsername = _useStateLogin[1];
   var _useStateLogin2 = useState(''), password = _useStateLogin2[0], setPassword = _useStateLogin2[1];
   var _useStateLogin3 = useState(false), loginError = _useStateLogin3[0], setLoginError = _useStateLogin3[1];
-  var handleLogin = function(e) {
-    e.preventDefault();
-    if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
-      sessionStorage.setItem('adminLoggedIn', 'true');
-      sessionStorage.setItem('adminUser', username);
-      onLogin(true);
-      setLoginError(false);
-    } else { setLoginError(true); setPassword(''); }
-  };
+  var handleLogin = function(e) { e.preventDefault(); if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) { sessionStorage.setItem('adminLoggedIn', 'true'); onLogin(true); setLoginError(false); } else { setLoginError(true); setPassword(''); } };
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
-        <div className="text-center mb-8"><div className="bg-[#d4af37] p-4 rounded-2xl inline-block mb-4"><Camera size={32} className="text-black" /></div><h1 className="text-2xl font-bold text-white mb-1">Studio Dashboard</h1><p className="text-gray-400 text-sm">Área restrita - Faça login para continuar</p></div>
+        <div className="text-center mb-8"><div className="bg-[#d4af37] p-4 rounded-2xl inline-block mb-4"><Camera size={32} className="text-black" /></div><h1 className="text-2xl font-bold text-white mb-1">Studio Dashboard</h1><p className="text-gray-400 text-sm">Área restrita</p></div>
         <form onSubmit={handleLogin} className="space-y-4">
           <div><label className="block text-xs font-medium text-gray-400 mb-1.5">Usuário</label><div className="relative"><User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" /><input type="text" value={username} onChange={function(e) { setUsername(e.target.value); }} placeholder="Digite seu usuário" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 pl-10 text-white outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all placeholder:text-gray-600" /></div></div>
           <div><label className="block text-xs font-medium text-gray-400 mb-1.5">Senha</label><div className="relative"><Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" /><input type="password" value={password} onChange={function(e) { setPassword(e.target.value); }} placeholder="Digite sua senha" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 pl-10 text-white outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all placeholder:text-gray-600" /></div></div>
-          {loginError && <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2"><AlertTriangle size={16} className="text-red-400" /><p className="text-red-400 text-xs">Usuário ou senha inválidos. Tente novamente.</p></div>}
+          {loginError && <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2"><AlertTriangle size={16} className="text-red-400" /><p className="text-red-400 text-xs">Usuário ou senha inválidos.</p></div>}
           <button type="submit" className="w-full bg-[#d4af37] hover:bg-[#c4a137] text-black font-bold p-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg mt-6"><LogIn size={18} /> Entrar</button>
         </form>
       </div>
@@ -301,7 +188,9 @@ function ClientApp(props) {
   var _useState18 = useState(false), videoEnded = _useState18[0], setVideoEnded = _useState18[1];
   var _useState19 = useState(false), videoError = _useState19[0], setVideoError = _useState19[1];
   var _useState20 = useState(true), showVideoOverlay = _useState20[0], setShowVideoOverlay = _useState20[1];
+  var _useStateVideoStalled = useState(false), videoStalled = _useStateVideoStalled[0], setVideoStalled = _useStateVideoStalled[1];
   var videoRef = useRef(null);
+  var videoRetryTimer = useRef(null);
   var galleryRef = useRef(null);
   var _useState21 = useState(12), visiblePhotos = _useState21[0], setVisiblePhotos = _useState21[1];
   var _useState22 = useState(false), isLoadingMore = _useState22[0], setIsLoadingMore = _useState22[1];
@@ -330,17 +219,60 @@ function ClientApp(props) {
     }
   }, [isAuthenticated, album.introVideo, videoEnded, videoError, albumExpired]);
   
+  // Reproduzir vídeo e monitorar travamentos
   useEffect(function() {
     if (showIntroVideo && videoRef.current) {
-      videoRef.current.play().catch(function() {
+      var video = videoRef.current;
+      
+      var handleStalled = function() {
+        setVideoStalled(true);
+        // Tentar reconectar após 2 segundos
+        if (videoRetryTimer.current) clearTimeout(videoRetryTimer.current);
+        videoRetryTimer.current = setTimeout(function() {
+          if (video && video.paused && !video.ended) {
+            video.load();
+            video.play().catch(function() {});
+            setVideoStalled(false);
+          }
+        }, 2000);
+      };
+      
+      var handlePlaying = function() {
+        setVideoStalled(false);
+        setShowVideoOverlay(false);
+      };
+      
+      var handleWaiting = function() {
+        setVideoStalled(true);
+      };
+      
+      var handleCanPlay = function() {
+        setVideoStalled(false);
+        setShowVideoOverlay(false);
+      };
+      
+      video.addEventListener('stalled', handleStalled);
+      video.addEventListener('playing', handlePlaying);
+      video.addEventListener('waiting', handleWaiting);
+      video.addEventListener('canplay', handleCanPlay);
+      
+      video.play().catch(function() {
         setShowVideoOverlay(true);
       });
+      
+      return function() {
+        video.removeEventListener('stalled', handleStalled);
+        video.removeEventListener('playing', handlePlaying);
+        video.removeEventListener('waiting', handleWaiting);
+        video.removeEventListener('canplay', handleCanPlay);
+        if (videoRetryTimer.current) clearTimeout(videoRetryTimer.current);
+      };
     }
   }, [showIntroVideo]);
   
   useEffect(function() {
     if (showIntroVideo && showVideoOverlay) {
-      var timer = setTimeout(function() { setShowVideoOverlay(false); }, 3000);
+      var timer = setTimeout(function() { setShowVideoOverlay(false); }, 5000);
       return function() { clearTimeout(timer); };
     }
   }, [showIntroVideo, showVideoOverlay]);
@@ -385,7 +317,7 @@ function ClientApp(props) {
   var handleWhatsAppContact = function() { if (album.whatsappNumber?.trim()) { var p = album.whatsappNumber.replace(/\D/g, ''); if (p.indexOf('55') !== 0) p = '55' + p; window.open('https://wa.me/' + p + '?text=' + encodeURIComponent('Ola! Vi seu album "' + album.clientName + '" e gostaria de saber mais informacoes.'), '_blank'); } };
   var handleStoryNavigation = function(d) { if (d === 'prev' && currentStoryIdx > 0) { setCurrentStoryIdx(function(v) { return v - 1; }); setStoryProgress(0); storyStartTimeRef.current = Date.now(); } else if (d === 'next') { if (currentStoryIdx < album.photos.length - 1) { setCurrentStoryIdx(function(v) { return v + 1; }); setStoryProgress(0); storyStartTimeRef.current = Date.now(); } else { setIsStoryPlaying(false); setActiveTab('gallery'); } } };
   var toggleMute = function(e) { e.stopPropagation(); setIsMuted(!isMuted); };
-  var handleVideoEnded = function() { setShowIntroVideo(false); setVideoEnded(true); setShowVideoOverlay(false); setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); };
+  var handleVideoEnded = function() { setShowIntroVideo(false); setVideoEnded(true); setShowVideoOverlay(false); setVideoStalled(false); setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); };
   var handleSkipVideo = function() { handleVideoEnded(); };
   var handleVideoError = function() { setVideoError(true); setShowIntroVideo(false); handleVideoEnded(); };
   var handleSharePhoto = function(photoUrl) { setSharePhotoUrl(photoUrl); setShowSharePopup(true); };
@@ -393,6 +325,7 @@ function ClientApp(props) {
   var handleShareCurrentStory = function() { if (album.photos && album.photos[currentStoryIdx]) { handleSharePhoto(album.photos[currentStoryIdx]); } };
   var hasWhatsApp = album.whatsappNumber?.trim();
 
+  // TELA DE VÍDEO INTRO - COM TRATAMENTO DE TRAVAMENTOS
   if (isAuthenticated && showIntroVideo && album.introVideo && !albumExpired) {
     var orientation = detectVideoOrientation(album.introVideo);
     var isVertical = orientation === 'vertical';
@@ -401,11 +334,46 @@ function ClientApp(props) {
         <style>{'@keyframes pulse-play{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.08);opacity:1}}@keyframes float-text{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}'}</style>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', position: 'relative' }}>
           <div style={{ width: isVertical ? 'min(100%, 420px)' : 'min(100%, 90vw)', maxHeight: '100dvh', aspectRatio: isVertical ? '9/16' : '16/9', position: 'relative', overflow: 'hidden', borderRadius: isVertical ? '20px' : '12px', background: '#000', boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
-            <video ref={videoRef} src={album.introVideo} autoPlay playsInline muted={false} onEnded={handleVideoEnded} onError={handleVideoError} onCanPlay={function() { setShowVideoOverlay(false); }} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-            {showVideoOverlay && <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', zIndex: 10, pointerEvents: 'none' }}><div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(212,175,55,0.25)', border: '3px solid rgba(212,175,55,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', animation: 'pulse-play 2s ease-in-out infinite' }}><Play size={38} fill="rgba(212,175,55,0.95)" color="rgba(212,175,55,0.95)" style={{ marginLeft: '3px' }} /></div><div style={{ textAlign: 'center', animation: 'float-text 3s ease-in-out infinite' }}><p style={{ color: 'white', fontSize: '1.05rem', fontWeight: 600, margin: '0 0 6px 0' }}>Aguarde o video esta carregando</p><p style={{ color: 'rgba(212,175,55,0.9)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>o video sera iniciado automaticamente</p></div></div>}
+            <video 
+              ref={videoRef} 
+              src={album.introVideo} 
+              autoPlay 
+              playsInline 
+              muted={false}
+              preload="auto"
+              onEnded={handleVideoEnded} 
+              onError={handleVideoError}
+              style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} 
+            />
+            
+            {/* Indicador de buffer/travamento */}
+            {videoStalled && (
+              <div style={{ position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', color: 'white', padding: '10px 20px', borderRadius: '20px', fontSize: '0.8rem', zIndex: 20, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Loader2 size={16} className="animate-spin" />
+                <span>Carregando video...</span>
+              </div>
+            )}
+            
+            {(showVideoOverlay || videoStalled) && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', zIndex: 10, pointerEvents: 'none' }}>
+                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(212,175,55,0.25)', border: '3px solid rgba(212,175,55,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', animation: videoStalled ? 'none' : 'pulse-play 2s ease-in-out infinite' }}>
+                  {videoStalled ? <Loader2 size={38} className="animate-spin" color="rgba(212,175,55,0.95)" /> : <Play size={38} fill="rgba(212,175,55,0.95)" color="rgba(212,175,55,0.95)" style={{ marginLeft: '3px' }} />}
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ color: 'white', fontSize: '1.05rem', fontWeight: 600, margin: '0 0 6px 0' }}>
+                    {videoStalled ? 'Buffering...' : 'Aguarde o video esta carregando'}
+                  </p>
+                  <p style={{ color: 'rgba(212,175,55,0.9)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>
+                    {videoStalled ? 'O video continuara em instantes' : 'o video sera iniciado automaticamente'}
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-        <button onClick={function(e) { e.stopPropagation(); handleSkipVideo(); }} style={{ position: 'fixed', bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', color: 'white', padding: '0.7rem 1.3rem', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}><SkipForward size={16} /> Pular Video</button>
+        <button onClick={function(e) { e.stopPropagation(); handleSkipVideo(); }} style={{ position: 'fixed', bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', color: 'white', padding: '0.7rem 1.3rem', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}>
+          <SkipForward size={16} /> Pular Video
+        </button>
       </div>
     );
   }
@@ -464,7 +432,7 @@ function ClientApp(props) {
       {activeTab === 'video' && album.introVideo && (
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4">
           <div className="flex items-center justify-between mb-3 sm:mb-4"><h2 className="text-sm sm:text-base font-semibold text-gray-200">Video de Abertura</h2><button onClick={function() { setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); }} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><SkipForward size={12} /> Pular para Stories</button></div>
-          <div style={{ display: 'flex', justifyContent: 'center' }}><div style={{ width: '100%', maxWidth: '420px', aspectRatio: '9/16', maxHeight: '70vh', position: 'relative', overflow: 'hidden', borderRadius: '20px', background: '#000', boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}><video src={album.introVideo} controls autoPlay playsInline style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} /></div></div>
+          <div style={{ display: 'flex', justifyContent: 'center' }}><div style={{ width: '100%', maxWidth: '420px', aspectRatio: '9/16', maxHeight: '70vh', position: 'relative', overflow: 'hidden', borderRadius: '20px', background: '#000', boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}><video src={album.introVideo} controls autoPlay playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} /></div></div>
         </div>
       )}
       {activeTab === 'gallery' && (
@@ -563,53 +531,17 @@ function AdminEditor(props) {
   var _useState43 = useState(0), upr = _useState43[0], setUpr = _useState43[1];
   var _useState44 = useState(false), isSaving = _useState44[0], setIsSaving = _useState44[1];
   var _useState45 = useState(''), uploadStatus = _useState45[0], setUploadStatus = _useState45[1];
-  
   var f2b = function(f) { return new Promise(function(r, j) { var rd = new FileReader(); rd.readAsDataURL(f); rd.onload = function() { r(rd.result); }; rd.onerror = j; }); };
   var ri = function(b64, mw) { mw = mw || 1200; return new Promise(function(r) { var img = new Image(); img.onload = function() { var c = document.createElement('canvas'); var w = img.width, h = img.height; if (w > mw) { h = (h * mw) / w; w = mw; } c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); r(c.toDataURL('image/jpeg', 0.8)); }; img.src = b64; }); };
-
   var hfu = async function(e) { var fs = Array.from(e.target.files); if (!fs.length) return; setIu(true); var np = up.slice(); var p = 0; for (var i = 0; i < fs.length; i++) { var f = fs[i]; if (f.type.startsWith('image/')) { try { var b = await f2b(f); b = await ri(b, 1200); np.push(b); } catch (_) {} } p++; setUpr(Math.round((p / fs.length) * 100)); } setUp(np); setIu(false); setUpr(0); e.target.value = ''; };
   var hlu = async function(e) { var f = e.target.files[0]; if (!f) return; if (f.type.startsWith('image/')) { var b = await f2b(f); b = await ri(b, 800); setLl(b); } e.target.value = ''; };
   var hlbu = async function(e) { var fs = Array.from(e.target.files); if (!fs.length) return; setIu(true); var nb = lb.slice(); var p = 0; for (var i = 0; i < fs.length; i++) { var f = fs[i]; if (f.type.startsWith('image/')) { var b = await f2b(f); b = await ri(b, 800); nb.push(b); } p++; setUpr(Math.round((p / fs.length) * 100)); } setLb(nb); setIu(false); setUpr(0); e.target.value = ''; };
   var hmu = function(e) { var f = e.target.files[0]; if (!f) return; if (f.type.startsWith('audio/')) { setSmf(f); var u = URL.createObjectURL(f); setSmp(u); var a = new Audio(u); a.addEventListener('loadedmetadata', function() { setAd(a.duration); if (!met) setMet(a.duration); }); a.load(); } e.target.value = ''; };
-  var hvu = function(e) { var f = e.target.files[0]; if (!f) return; if (f.type.startsWith('video/')) { if (f.size > 500 * 1024 * 1024) { alert('Vídeo muito grande! Máximo permitido: 500MB.'); e.target.value = ''; return; } setVideoFile(f); var url = URL.createObjectURL(f); setVideoPreview(url); } else { alert('Por favor, selecione um arquivo de vídeo (MP4, MOV, etc.)'); } e.target.value = ''; };
+  var hvu = function(e) { var f = e.target.files[0]; if (!f) return; if (f.type.startsWith('video/')) { setVideoFile(f); var url = URL.createObjectURL(f); setVideoPreview(url); } else { alert('Selecione um arquivo de vídeo (MP4, MOV, etc.)'); } e.target.value = ''; };
   var hrv = function() { setVideoFile(null); setVideoPreview(''); };
   var hrm = function() { setSmf(null); setSmp(''); setMst(0); setMet(null); setAd(null); };
   var hrp = function(i) { var np = up.slice(); np.splice(i, 1); setUp(np); if (sf.indexOf(i) !== -1) setSf(sf.filter(function(x) { return x !== i; })); if (sp === up[i]) setSp(''); };
-  
-  var hs = async function(e) {
-    e.preventDefault();
-    if (!formData.clientName) { alert("Preencha o Nome do Cliente."); return; }
-    if (!formData.googleDriveUrl) { alert("Insira o link do Google Drive."); return; }
-    if (!up.length) { alert("Selecione pelo menos uma foto."); return; }
-    setIsSaving(true); setUpr(0); setUploadStatus('Iniciando...');
-    try {
-      var aid = formData.shortId, urls = [];
-      var total = up.length + (smf ? 1 : 0) + (videoFile ? 1 : 0) + (ll && ll.indexOf('http') !== 0 ? 1 : 0) + (lb || []).length;
-      var step = 0;
-      for (var i = 0; i < up.length; i++) { var ph = up[i]; if (ph.startsWith('http')) { urls.push(ph); step++; continue; } var u = await uploadToCloudinary(ph, aid, 'image'); if (!u) throw new Error("Falha ao enviar imagem."); urls.push(u); step++; setUpr(Math.round((step / total) * 100)); setUploadStatus('Enviando fotos...'); }
-      var fM = smp; if (smf) { setUploadStatus('Enviando musica...'); fM = await uploadToCloudinary(smf, aid, 'video'); if (!fM) throw new Error("Falha ao enviar musica."); step++; setUpr(Math.round((step / total) * 100)); }
-      
-      // Upload do vídeo usando XMLHttpRequest (sem CORS)
-      var fVideo = videoPreview;
-      if (videoFile) {
-        setUploadStatus('Enviando video... Isso pode levar alguns minutos.');
-        setUpr(Math.round((step / total) * 100));
-        fVideo = await uploadToCloudinary(videoFile, aid, 'video');
-        if (!fVideo) throw new Error("Falha ao enviar video.");
-        step++;
-        setUpr(Math.round((step / total) * 100));
-      }
-      
-      var fL = ll; if (ll && ll.indexOf('http') !== 0) { fL = await uploadToCloudinary(ll, aid, 'image'); if (!fL) throw new Error("Falha ao enviar logo."); step++; }
-      var fBgs = []; for (var j = 0; j < (lb || []).length; j++) { var bg = lb[j]; if (bg.startsWith('http')) fBgs.push(bg); else { var ub = await uploadToCloudinary(bg, aid, 'image'); if (!ub) throw new Error("Falha ao enviar fundo."); fBgs.push(ub); } step++; }
-      var uf = []; for (var k = 0; k < sf.length; k++) { var oi = sf[k], ni = urls.findIndex(function(u) { return u === up[oi]; }); if (ni !== -1) uf.push(ni); }
-      var fP = sp; if (sp && sp.indexOf('http') !== 0) { var pi = urls.findIndex(function(u) { return u === sp; }); fP = pi !== -1 ? urls[pi] : urls[0]; } else if (!fP && urls.length) fP = urls[0];
-      var fd = Object.assign({}, formData, { photos: urls, featuredPhotos: uf, profileImage: fP, loaderLogo: fL, loaderBackgrounds: fBgs, storyMusic: fM || '', musicStartTime: mst || 0, musicEndTime: met || ad || null, introVideo: fVideo || '', expiryDate: formData.expiryDate || '', updatedAt: new Date().toISOString() });
-      setUpr(95); setUploadStatus('Salvando na planilha...');
-      if (await saveAlbumToSheets(fd)) { setUpr(100); setUploadStatus('✅ Concluído!'); setTimeout(function() { onSave(fd); alert('Album salvo!'); }, 500); } else throw new Error("Falha ao salvar.");
-    } catch (er) { alert('Erro: ' + er.message); }
-    finally { setIsSaving(false); setUpr(0); setUploadStatus(''); }
-  };
+  var hs = async function(e) { e.preventDefault(); if (!formData.clientName) { alert("Preencha o Nome do Cliente."); return; } if (!formData.googleDriveUrl) { alert("Insira o link do Google Drive."); return; } if (!up.length) { alert("Selecione pelo menos uma foto."); return; } setIsSaving(true); setUpr(0); setUploadStatus('Iniciando...'); try { var aid = formData.shortId, urls = []; var total = up.length + (smf ? 1 : 0) + (videoFile ? 1 : 0) + (ll && ll.indexOf('http') !== 0 ? 1 : 0) + (lb || []).length; var step = 0; for (var i = 0; i < up.length; i++) { var ph = up[i]; if (ph.startsWith('http')) { urls.push(ph); step++; continue; } var u = await uploadToCloudinary(ph, aid, 'image'); if (!u) throw new Error("Falha ao enviar imagem."); urls.push(u); step++; setUpr(Math.round((step / total) * 100)); setUploadStatus('Enviando fotos...'); } var fM = smp; if (smf) { setUploadStatus('Enviando musica...'); fM = await uploadToCloudinary(smf, aid, 'video'); if (!fM) throw new Error("Falha ao enviar musica."); step++; setUpr(Math.round((step / total) * 100)); } var fVideo = videoPreview; if (videoFile) { setUploadStatus('Enviando video... Isso pode levar alguns minutos.'); setUpr(Math.round((step / total) * 100)); fVideo = await uploadToCloudinary(videoFile, aid, 'video'); if (!fVideo) throw new Error("Falha ao enviar video."); step++; setUpr(Math.round((step / total) * 100)); } var fL = ll; if (ll && ll.indexOf('http') !== 0) { fL = await uploadToCloudinary(ll, aid, 'image'); if (!fL) throw new Error("Falha ao enviar logo."); step++; } var fBgs = []; for (var j = 0; j < (lb || []).length; j++) { var bg = lb[j]; if (bg.startsWith('http')) fBgs.push(bg); else { var ub = await uploadToCloudinary(bg, aid, 'image'); if (!ub) throw new Error("Falha ao enviar fundo."); fBgs.push(ub); } step++; } var uf = []; for (var k = 0; k < sf.length; k++) { var oi = sf[k], ni = urls.findIndex(function(u) { return u === up[oi]; }); if (ni !== -1) uf.push(ni); } var fP = sp; if (sp && sp.indexOf('http') !== 0) { var pi = urls.findIndex(function(u) { return u === sp; }); fP = pi !== -1 ? urls[pi] : urls[0]; } else if (!fP && urls.length) fP = urls[0]; var fd = Object.assign({}, formData, { photos: urls, featuredPhotos: uf, profileImage: fP, loaderLogo: fL, loaderBackgrounds: fBgs, storyMusic: fM || '', musicStartTime: mst || 0, musicEndTime: met || ad || null, introVideo: fVideo || '', expiryDate: formData.expiryDate || '', updatedAt: new Date().toISOString() }); setUpr(95); setUploadStatus('Salvando na planilha...'); if (await saveAlbumToSheets(fd)) { setUpr(100); setUploadStatus('✅ Concluído!'); setTimeout(function() { onSave(fd); alert('Album salvo!'); }, 500); } else throw new Error("Falha ao salvar."); } catch (er) { alert('Erro: ' + er.message); } finally { setIsSaving(false); setUpr(0); setUploadStatus(''); } };
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] py-6 sm:py-8 px-3 sm:px-4">
@@ -624,22 +556,7 @@ function AdminEditor(props) {
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Link do Google Drive (Download)</label><input type="url" value={formData.googleDriveUrl} onChange={function(e) { setFormData(Object.assign({}, formData, { googleDriveUrl: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="https://drive.google.com/drive/folders/..." /></div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">📱 WhatsApp</label><input type="tel" value={formData.whatsappNumber || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { whatsappNumber: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none" placeholder="Ex: 11912345678" /></div>
               <div className="p-4 border border-orange-200 rounded-xl bg-orange-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">📅 Prazo de Expiracao do Album (opcional)</label><p className="text-xs text-gray-500 mb-3">Defina uma data limite para o cliente acessar o album.</p><div className="flex items-center gap-2"><Calendar size={16} className="text-orange-500" /><input type="date" value={formData.expiryDate || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { expiryDate: e.target.value })); }} className="w-full border border-orange-200 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none" /></div></div>
-              
-              {/* UPLOAD DE VÍDEO VIA CLOUDINARY */}
-              <div className="p-4 border border-blue-200 rounded-xl bg-blue-50/30">
-                <label className="block text-sm font-semibold text-gray-900 mb-1.5">🎬 Video de Abertura (Upload MP4)</label>
-                <p className="text-xs text-gray-500 mb-3">Faça upload do video de abertura (ate 500MB).</p>
-                {videoPreview ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-blue-200"><Video size={18} className="text-blue-600" /><div className="flex-1"><p className="text-xs font-medium">{videoFile ? videoFile.name : 'Video carregado'}</p>{videoFile && <p className="text-[10px] text-gray-500">{(videoFile.size / (1024 * 1024)).toFixed(1)} MB</p>}</div><button type="button" onClick={hrv} className="text-red-500 p-1"><Trash2 size={14} /></button></div>
-                    <video controls className="w-full rounded-lg" src={videoPreview} style={{ maxHeight: '200px' }} />
-                  </div>
-                ) : (
-                  <label className="cursor-pointer inline-block"><div className="bg-blue-600 text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-blue-700"><Video size={14} /> Selecionar Video (MP4)</div><input type="file" accept="video/*" onChange={hvu} className="hidden" disabled={iu || isSaving} /></label>
-                )}
-                {videoFile && videoFile.size > 100 * 1024 * 1024 && <p className="text-[10px] text-yellow-600 mt-2">⚠️ Video grande detectado. O upload pode demorar alguns minutos.</p>}
-              </div>
-              
+              <div className="p-4 border border-blue-200 rounded-xl bg-blue-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">🎬 Video de Abertura (Upload MP4)</label><p className="text-xs text-gray-500 mb-3">Faça upload do video de abertura.</p>{videoPreview ? (<div className="space-y-3"><div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-blue-200"><Video size={18} className="text-blue-600" /><div className="flex-1"><p className="text-xs font-medium">{videoFile ? videoFile.name : 'Video carregado'}</p></div><button type="button" onClick={hrv} className="text-red-500 p-1"><Trash2 size={14} /></button></div><video controls className="w-full rounded-lg" src={videoPreview} style={{ maxHeight: '200px' }} /></div>) : (<label className="cursor-pointer inline-block"><div className="bg-blue-600 text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-blue-700"><Video size={14} /> Selecionar Video (MP4)</div><input type="file" accept="video/*" onChange={hvu} className="hidden" disabled={iu || isSaving} /></label>)}</div>
               <div className="p-4 border border-purple-200 rounded-xl bg-purple-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">🎵 Musica dos Stories</label><p className="text-xs text-gray-500 mb-3"><strong className="text-purple-700">A musica so toca nos Stories.</strong></p>{smp ? (<div className="space-y-3"><div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-purple-200"><Music size={18} className="text-purple-600" /><div className="flex-1"><p className="text-xs font-medium">{smf ? smf.name : 'Musica carregada'}</p></div><button type="button" onClick={hrm} className="text-red-500 p-1"><Trash2 size={14} /></button></div><audio controls className="w-full" src={smp} /><AudioTrimmer audioUrl={smp} startTime={mst} endTime={met || ad} duration={ad} onStartChange={setMst} onEndChange={setMet} /></div>) : (<label className="cursor-pointer inline-block"><div className="bg-purple-600 text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-purple-700"><Music size={14} /> Selecionar Musica (MP3)</div><input type="file" accept="audio/*" onChange={hmu} className="hidden" /></label>)}</div>
               <div className="p-4 border-2 border-dashed border-[#d4af37] rounded-xl bg-yellow-50/20"><label className="block text-sm font-semibold text-gray-900 mb-2">📸 Fotos da Galeria</label><label className="cursor-pointer"><div className="w-full bg-[#d4af37] text-black font-semibold rounded-lg py-2.5 px-4 flex items-center justify-center gap-2 hover:bg-[#c4a137] text-sm"><FolderUp size={16} />Selecionar Fotos</div><input type="file" accept="image/*" multiple onChange={hfu} className="hidden" /></label>{(up || []).length > 0 && <div className="mt-3"><p className="text-xs font-medium mb-2">{(up || []).length} foto(s)</p><div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-80 overflow-y-auto p-1.5">{(up || []).map(function(p, i) { return <div key={i} className="relative group"><img src={p} className="w-full aspect-square object-cover rounded-lg border" /><button type="button" onClick={function() { hrp(i); }} className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100"><Trash2 size={10} /></button></div>; })}</div></div>}</div>
               {(up || []).length > 0 && (<><div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50"><label className="block text-sm font-semibold mb-2">📷 Foto de Perfil</label><div className="flex justify-center mb-3"><div className="w-20 h-20 rounded-full overflow-hidden border-3 border-[#d4af37] bg-neutral-900 p-0.5">{sp ? <img src={sp} className="w-full h-full object-cover rounded-full" /> : <div className="w-full h-full bg-neutral-800 rounded-full flex items-center justify-center"><Camera size={24} className="text-gray-400" /></div>}</div></div><div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto">{(up || []).slice(0, 50).map(function(p, i) { return <div key={i} onClick={function() { setSp(p); }} className={'relative cursor-pointer rounded-lg overflow-hidden ' + (sp === p ? 'ring-3 ring-[#d4af37] scale-95' : 'hover:scale-95')}><img src={p} className="w-full aspect-square object-cover" />{sp === p && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><CheckCircle size={20} className="text-[#d4af37]" /></div>}</div>; })}</div></div><div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50"><label className="block text-sm font-semibold mb-2">⭐ Fotos em Destaque</label><p className="text-xs text-gray-500 mb-3">Selecione ate 5 fotos para o fundo da tela de PIN</p><div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto">{(up || []).slice(0, 50).map(function(p, i) { var isSel = sf.indexOf(i) !== -1; return <div key={i} onClick={function() { if (isSel) setSf(sf.filter(function(x) { return x !== i; })); else if (sf.length < 5) setSf(sf.concat([i])); }} className={'relative cursor-pointer rounded-lg overflow-hidden ' + (isSel ? 'ring-3 ring-[#d4af37] scale-95' : 'hover:scale-95')}><img src={p} className="w-full aspect-square object-cover" />{isSel && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><CheckCircle size={20} className="text-[#d4af37]" /></div>}</div>; })}</div></div></>)}
