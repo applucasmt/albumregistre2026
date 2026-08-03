@@ -3,26 +3,70 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Carregando...</title>
+  
+  <!-- Meta tags padrão (serão atualizadas via JS) -->
+  <meta property="og:title" content="Álbum Fotográfico" />
+  <meta property="og:description" content="Veja minhas fotos neste álbum exclusivo" />
+  <meta property="og:image" content="https://res.cloudinary.com/gyzeubzm/image/upload/v1/albums/default-cover.jpg" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="description" content="Veja minhas fotos neste álbum exclusivo" />
+  
+  <title>Registre Fotografias</title>
+  
   <style>
-    body { margin: 0; background: #0a0a0a; display: flex; justify-content: center; align-items: center; height: 100vh; }
-    .loader { color: #d4af37; font-family: Arial, sans-serif; text-align: center; }
-    .loader img { width: 80px; height: 80px; border-radius: 50%; border: 3px solid #d4af37; margin-bottom: 20px; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0a0a0a; 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex; 
+      justify-content: center; 
+      align-items: center; 
+      min-height: 100vh;
+      color: white;
+    }
+    .container { text-align: center; padding: 20px; }
+    .loader-img {
+      width: 100px; height: 100px; 
+      border-radius: 50%; 
+      border: 3px solid #d4af37; 
+      object-fit: cover;
+      margin-bottom: 20px;
+    }
+    h1 { font-size: 1.3rem; margin-bottom: 8px; color: #d4af37; }
+    p { color: #999; font-size: 0.9rem; margin-bottom: 20px; }
+    .spinner {
+      width: 30px; height: 30px;
+      border: 3px solid rgba(212,175,55,0.3);
+      border-top-color: #d4af37;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <div class="loader">
-    <img id="albumImage" src="" alt="Carregando..." />
-    <h2 id="albumTitle" style="color:white;margin:10px 0;">Carregando álbum...</h2>
-    <p id="albumDesc" style="color:#999;"></p>
+  <div class="container">
+    <img id="albumImage" class="loader-img" src="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📸</text></svg>" alt="Carregando..." />
+    <h1 id="albumTitle">Carregando álbum...</h1>
+    <p id="albumDesc"></p>
+    <div class="spinner"></div>
   </div>
 
   <script>
-    // Pegar o ID do álbum da URL
-    var hash = window.location.hash || '';
-    var albumId = hash.replace('#/album/', '');
-    
-    if (albumId) {
+    (function() {
+      var hash = window.location.hash || '';
+      var albumId = hash.replace('#/album/', '');
+      
+      if (!albumId) {
+        window.location.href = window.location.origin + '/#/album/' + (albumId || '');
+        return;
+      }
+      
       var apiUrl = 'https://script.google.com/macros/s/AKfycbwaNkmrY33Uf57_U1w5u1DRxNegt1xff9Us5hvicZiMVcXQj4d4Fe-wqwL_tSLdreY/exec?id=' + albumId;
       
       fetch(apiUrl)
@@ -32,22 +76,35 @@
             var album = data.album;
             var photoUrl = album.profileImage || (album.photos && album.photos[0]) || '';
             
-            // Atualizar página com meta tags dinâmicas
-            document.title = album.clientName || 'Álbum Fotográfico';
+            // Se for Cloudinary, otimizar para preview
+            if (photoUrl.indexOf('cloudinary') !== -1) {
+              var parts = photoUrl.split('/upload/');
+              if (parts.length === 2) {
+                photoUrl = parts[0] + '/upload/c_fill,w_1200,h_630,q_80/' + parts[1];
+              }
+            }
             
-            // Atualizar meta tags
+            var title = album.clientName || 'Álbum Fotográfico';
+            var desc = album.subtitle || 'Veja minhas fotos neste álbum exclusivo';
+            
+            // Atualizar título
+            document.title = title;
+            
+            // Atualizar meta tags (IMPORTANTE para WhatsApp/Instagram)
             var metaTags = {
-              'og:title': album.clientName || 'Álbum Fotográfico',
-              'og:description': album.subtitle || 'Veja minhas fotos neste álbum exclusivo',
+              'og:title': title,
+              'og:description': desc,
               'og:image': photoUrl,
               'og:image:width': '1200',
               'og:image:height': '630',
+              'og:image:secure_url': photoUrl,
               'og:url': window.location.href,
               'og:type': 'website',
               'twitter:card': 'summary_large_image',
-              'twitter:title': album.clientName || 'Álbum Fotográfico',
+              'twitter:title': title,
+              'twitter:description': desc,
               'twitter:image': photoUrl,
-              'description': album.subtitle || ''
+              'description': desc
             };
             
             Object.keys(metaTags).forEach(function(name) {
@@ -64,19 +121,21 @@
             
             // Atualizar visual
             document.getElementById('albumImage').src = photoUrl;
-            document.getElementById('albumTitle').textContent = album.clientName;
-            document.getElementById('albumDesc').textContent = album.subtitle || '';
+            document.getElementById('albumTitle').textContent = title;
+            document.getElementById('albumDesc').textContent = desc;
             
-            // Redirecionar para o app React após 1 segundo
+            // Redirecionar para o app após 1.5 segundos
             setTimeout(function() {
               window.location.href = window.location.origin + '/#/album/' + albumId;
-            }, 1000);
+            }, 1500);
+          } else {
+            window.location.href = window.location.origin + '/#/album/' + albumId;
           }
         })
         .catch(function() {
           window.location.href = window.location.origin + '/#/album/' + albumId;
         });
-    }
+    })();
   </script>
 </body>
 </html>
