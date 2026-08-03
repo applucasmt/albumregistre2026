@@ -5,8 +5,15 @@
       "destination": "/preview.html"
     },
     {
-      "source": "/preview/(.*)",
+      "source": "/preview/:id",
       "destination": "/preview.html"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/album/:id",
+      "destination": "/preview.html",
+      "statusCode": 302
     }
   ]
 }
