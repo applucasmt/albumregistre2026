@@ -72,24 +72,57 @@ async function uploadToCloudinary(file, albumId, resourceType) {
 
 function updateFavicon(photoUrl) {
   if (!photoUrl) return;
-  var existingFavicon = document.querySelector('link[rel="icon"]');
-  if (existingFavicon) { existingFavicon.remove(); }
+  var existingFavicons = document.querySelectorAll('link[rel="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]');
+  existingFavicons.forEach(function(el) { el.remove(); });
   var canvas = document.createElement('canvas');
-  canvas.width = 32; canvas.height = 32;
+  canvas.width = 64; canvas.height = 64;
   var ctx = canvas.getContext('2d');
   var img = new Image();
   img.crossOrigin = 'anonymous';
-  img.onload = function() { ctx.beginPath(); ctx.arc(16, 16, 16, 0, Math.PI * 2); ctx.closePath(); ctx.clip(); ctx.drawImage(img, 0, 0, 32, 32); var favicon = document.createElement('link'); favicon.rel = 'icon'; favicon.type = 'image/png'; favicon.href = canvas.toDataURL('image/png'); document.head.appendChild(favicon); };
-  img.onerror = function() { var favicon = document.createElement('link'); favicon.rel = 'icon'; favicon.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📸</text></svg>'; document.head.appendChild(favicon); };
+  img.onload = function() {
+    ctx.beginPath(); ctx.arc(32, 32, 32, 0, Math.PI * 2); ctx.closePath(); ctx.clip(); ctx.drawImage(img, 0, 0, 64, 64);
+    var faviconUrl = canvas.toDataURL('image/png');
+    var favicon = document.createElement('link'); favicon.rel = 'icon'; favicon.type = 'image/png'; favicon.href = faviconUrl; document.head.appendChild(favicon);
+    var shortcutIcon = document.createElement('link'); shortcutIcon.rel = 'shortcut icon'; shortcutIcon.type = 'image/png'; shortcutIcon.href = faviconUrl; document.head.appendChild(shortcutIcon);
+    var appleIcon = document.createElement('link'); appleIcon.rel = 'apple-touch-icon'; appleIcon.href = faviconUrl; document.head.appendChild(appleIcon);
+  };
+  img.onerror = function() {
+    var fallbackUrl = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📸</text></svg>';
+    var favicon = document.createElement('link'); favicon.rel = 'icon'; favicon.href = fallbackUrl; document.head.appendChild(favicon);
+  };
   img.src = photoUrl;
 }
 
 function updateMetaTags(album) {
   if (!album) return;
-  const photoUrl = album.profileImage || (album.photos && album.photos[0]) || '';
+  var rawPhotoUrl = album.profileImage || (album.photos && album.photos[0]) || '';
+  var photoUrl = rawPhotoUrl;
+  if (rawPhotoUrl.indexOf('cloudinary') !== -1) {
+    var parts = rawPhotoUrl.split('/upload/');
+    if (parts.length === 2) { photoUrl = parts[0] + '/upload/c_fill,w_1200,h_630,q_80/' + parts[1]; }
+  }
   document.title = album.clientName || 'Album';
-  const metaTags = [{ property: 'og:title', content: album.clientName || '' }, { property: 'og:image', content: photoUrl }, { name: 'description', content: album.subtitle || '' }];
-  metaTags.forEach(function(tag) { var meta; if (tag.property) { meta = document.querySelector('meta[property="' + tag.property + '"]'); if (!meta) { meta = document.createElement('meta'); meta.setAttribute('property', tag.property); } } else { meta = document.querySelector('meta[name="' + tag.name + '"]'); if (!meta) { meta = document.createElement('meta'); meta.setAttribute('name', tag.name); } } meta.setAttribute('content', tag.content); if (!meta.parentNode) document.head.appendChild(meta); });
+  const metaTags = [
+    { property: 'og:title', content: album.clientName || 'Album Fotografico' },
+    { property: 'og:description', content: album.subtitle || 'Veja minhas fotos neste album exclusivo' },
+    { property: 'og:image', content: photoUrl },
+    { property: 'og:image:width', content: '1200' },
+    { property: 'og:image:height', content: '630' },
+    { property: 'og:image:secure_url', content: photoUrl },
+    { property: 'og:url', content: window.location.href },
+    { property: 'og:type', content: 'website' },
+    { name: 'twitter:card', content: 'summary_large_image' },
+    { name: 'twitter:title', content: album.clientName || 'Album Fotografico' },
+    { name: 'twitter:description', content: album.subtitle || '' },
+    { name: 'twitter:image', content: photoUrl },
+    { name: 'description', content: album.subtitle || '' }
+  ];
+  metaTags.forEach(function(tag) {
+    var attr = tag.property ? 'property' : 'name';
+    var meta = document.querySelector('meta[' + attr + '="' + (tag.property || tag.name) + '"]');
+    if (!meta) { meta = document.createElement('meta'); meta.setAttribute(attr, tag.property || tag.name); document.head.appendChild(meta); }
+    meta.setAttribute('content', tag.content);
+  });
   updateFavicon(photoUrl);
 }
 
@@ -104,7 +137,31 @@ function formatExpiryDate(album) { var dateStr = album._expiryDate || album.expi
 function getDaysRemaining(album) { var dateStr = album._expiryDate || album.expiryDate; if (!dateStr) return null; try { var now = new Date(); var expiry = new Date(dateStr); var diff = expiry.getTime() - now.getTime(); return Math.ceil(diff / (1000 * 60 * 60 * 24)); } catch (e) { return null; } }
 
 async function sharePhoto(photoUrl, album) {
-  try { const response = await fetch(photoUrl); const blob = await response.blob(); const file = new File([blob], 'foto.jpg', { type: 'image/jpeg' }); if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Foto do album ' + (album.clientName || 'Album'), text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸' }); } else if (navigator.share) { await navigator.share({ title: 'Foto do album ' + (album.clientName || 'Album'), text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸', url: photoUrl }); } else { var text = encodeURIComponent('Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸'); window.open('https://wa.me/?text=' + text + '%20' + encodeURIComponent(photoUrl), '_blank'); } } catch (error) { console.log('Compartilhamento cancelado:', error); }
+  try { 
+    const response = await fetch(photoUrl); 
+    const blob = await response.blob(); 
+    const file = new File([blob], 'foto.jpg', { type: 'image/jpeg' }); 
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { 
+      // Compartilhar com link de preview para redes sociais
+      var previewUrl = window.location.origin + '/preview#/album/' + album.shortId;
+      await navigator.share({ 
+        files: [file], 
+        title: 'Foto do album ' + (album.clientName || 'Album'), 
+        text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸\n\nVeja o album completo: ' + previewUrl
+      }); 
+    } else if (navigator.share) { 
+      var previewUrl2 = window.location.origin + '/preview#/album/' + album.shortId;
+      await navigator.share({ 
+        title: 'Foto do album ' + (album.clientName || 'Album'), 
+        text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸\n\nVeja o album completo: ' + previewUrl2, 
+        url: previewUrl2
+      }); 
+    } else { 
+      var text = encodeURIComponent('Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸');
+      var previewUrl3 = window.location.origin + '/preview#/album/' + album.shortId;
+      window.open('https://wa.me/?text=' + text + '%20' + encodeURIComponent(previewUrl3), '_blank'); 
+    } 
+  } catch (error) { console.log('Compartilhamento cancelado:', error); }
 }
 
 function SharePopup(props) {
@@ -222,120 +279,37 @@ function ClientApp(props) {
   useEffect(function() { if (album) updateMetaTags(album); }, [album]);
   useEffect(function() { if (!isAuthenticated && featuredList.length > 1) { var i = setInterval(function() { setBgImageIdx(function(p) { return (p + 1) % featuredList.length; }); }, 5000); return function() { clearInterval(i); }; } }, [isAuthenticated, featuredList]);
   useEffect(function() { if (isAuthenticated && !album.introVideo) { setVideoEnded(true); } }, [isAuthenticated, album.introVideo]);
+  useEffect(function() { if (isAuthenticated && album.introVideo && !videoEnded && !videoError && !albumExpired) { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setAudioLoaded(false); } setShowIntroVideo(true); setShowVideoOverlay(true); setActiveTab('video'); } }, [isAuthenticated, album.introVideo, videoEnded, videoError, albumExpired]);
   
-  useEffect(function() {
-    if (isAuthenticated && album.introVideo && !videoEnded && !videoError && !albumExpired) {
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setAudioLoaded(false); }
-      setShowIntroVideo(true);
-      setShowVideoOverlay(true);
-      setActiveTab('video');
-    }
-  }, [isAuthenticated, album.introVideo, videoEnded, videoError, albumExpired]);
-  
-  // Gerenciar eventos do vídeo - overlay só aparece quando realmente necessário
   useEffect(function() {
     if (showIntroVideo && videoRef.current) {
       var video = videoRef.current;
       var stallTimeout = null;
       var hasStartedPlaying = false;
-      
-      var handlePlaying = function() {
-        hasStartedPlaying = true;
-        setShowVideoOverlay(false);
-      };
-      
-      var handleWaiting = function() {
-        // Só mostra overlay de buffering se o vídeo já começou a tocar
-        if (hasStartedPlaying) {
-          // Pequeno delay para evitar flickering
-          if (stallTimeout) clearTimeout(stallTimeout);
-          stallTimeout = setTimeout(function() {
-            if (video.readyState < 3) {
-              setShowVideoOverlay(true);
-            }
-          }, 500);
-        }
-      };
-      
-      var handleCanPlay = function() {
-        if (stallTimeout) clearTimeout(stallTimeout);
-        if (hasStartedPlaying) {
-          setShowVideoOverlay(false);
-        }
-      };
-      
-      var handleStalled = function() {
-        if (hasStartedPlaying) {
-          if (stallTimeout) clearTimeout(stallTimeout);
-          stallTimeout = setTimeout(function() {
-            setShowVideoOverlay(true);
-          }, 1000);
-        }
-      };
-      
-      var handleCanPlayThrough = function() {
-        // Vídeo carregou o suficiente - remove overlay
-        if (stallTimeout) clearTimeout(stallTimeout);
-        setShowVideoOverlay(false);
-      };
-      
+      var handlePlaying = function() { hasStartedPlaying = true; setShowVideoOverlay(false); };
+      var handleWaiting = function() { if (hasStartedPlaying) { if (stallTimeout) clearTimeout(stallTimeout); stallTimeout = setTimeout(function() { if (video.readyState < 3) { setShowVideoOverlay(true); } }, 500); } };
+      var handleCanPlay = function() { if (stallTimeout) clearTimeout(stallTimeout); if (hasStartedPlaying) { setShowVideoOverlay(false); } };
+      var handleStalled = function() { if (hasStartedPlaying) { if (stallTimeout) clearTimeout(stallTimeout); stallTimeout = setTimeout(function() { setShowVideoOverlay(true); }, 1000); } };
+      var handleCanPlayThrough = function() { if (stallTimeout) clearTimeout(stallTimeout); setShowVideoOverlay(false); };
       video.addEventListener('playing', handlePlaying);
       video.addEventListener('waiting', handleWaiting);
       video.addEventListener('canplay', handleCanPlay);
       video.addEventListener('stalled', handleStalled);
       video.addEventListener('canplaythrough', handleCanPlayThrough);
-      
-      video.play().catch(function() {
-        setShowVideoOverlay(true);
-      });
-      
-      return function() {
-        video.removeEventListener('playing', handlePlaying);
-        video.removeEventListener('waiting', handleWaiting);
-        video.removeEventListener('canplay', handleCanPlay);
-        video.removeEventListener('stalled', handleStalled);
-        video.removeEventListener('canplaythrough', handleCanPlayThrough);
-        if (stallTimeout) clearTimeout(stallTimeout);
-      };
+      video.play().catch(function() { setShowVideoOverlay(true); });
+      return function() { video.removeEventListener('playing', handlePlaying); video.removeEventListener('waiting', handleWaiting); video.removeEventListener('canplay', handleCanPlay); video.removeEventListener('stalled', handleStalled); video.removeEventListener('canplaythrough', handleCanPlayThrough); if (stallTimeout) clearTimeout(stallTimeout); };
     }
   }, [showIntroVideo]);
   
-  // Overlay inicial some após 5 segundos no máximo
-  useEffect(function() {
-    if (showIntroVideo && showVideoOverlay) {
-      var timer = setTimeout(function() { 
-        setShowVideoOverlay(false); 
-      }, 5000);
-      return function() { clearTimeout(timer); };
-    }
-  }, [showIntroVideo, showVideoOverlay]);
-  
+  useEffect(function() { if (showIntroVideo && showVideoOverlay) { var timer = setTimeout(function() { setShowVideoOverlay(false); }, 5000); return function() { clearTimeout(timer); }; } }, [showIntroVideo, showVideoOverlay]);
   useEffect(function() { if (showIntroVideo) { var t = setTimeout(function() { handleVideoEnded(); }, 600000); return function() { clearTimeout(t); }; } }, [showIntroVideo]);
   
-  useEffect(function() {
-    if (activeTab === 'stories' && album.storyMusic && isAuthenticated && !showIntroVideo && videoEnded && !albumExpired) {
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; }
-      var a = new Audio(album.storyMusic); a.loop = true; a.volume = 0.5; audioRef.current = a;
-      var s = album.musicStartTime || 0; var e = album.musicEndTime || null;
-      a.addEventListener('loadedmetadata', function() { if (s > 0) a.currentTime = s; });
-      if (e) a.addEventListener('timeupdate', function l() { if (a.currentTime >= e) a.currentTime = s; });
-      a.addEventListener('canplaythrough', function() { setAudioLoaded(true); if (isStoryPlaying && !showIntroVideo) a.play().catch(function() { setAudioLoaded(false); }); });
-      a.addEventListener('error', function() { setAudioLoaded(false); });
-      return function() { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setAudioLoaded(false); } };
-    }
-    if (!album.storyMusic && audioRef.current) { audioRef.current.pause(); audioRef.current = null; setAudioLoaded(false); }
-  }, [activeTab, album.storyMusic, isAuthenticated, showIntroVideo, videoEnded, albumExpired]);
+  useEffect(function() { if (activeTab === 'stories' && album.storyMusic && isAuthenticated && !showIntroVideo && videoEnded && !albumExpired) { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } var a = new Audio(album.storyMusic); a.loop = true; a.volume = 0.5; audioRef.current = a; var s = album.musicStartTime || 0; var e = album.musicEndTime || null; a.addEventListener('loadedmetadata', function() { if (s > 0) a.currentTime = s; }); if (e) a.addEventListener('timeupdate', function l() { if (a.currentTime >= e) a.currentTime = s; }); a.addEventListener('canplaythrough', function() { setAudioLoaded(true); if (isStoryPlaying && !showIntroVideo) a.play().catch(function() { setAudioLoaded(false); }); }); a.addEventListener('error', function() { setAudioLoaded(false); }); return function() { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; setAudioLoaded(false); } }; } if (!album.storyMusic && audioRef.current) { audioRef.current.pause(); audioRef.current = null; setAudioLoaded(false); } }, [activeTab, album.storyMusic, isAuthenticated, showIntroVideo, videoEnded, albumExpired]);
   useEffect(function() { if (audioRef.current && audioLoaded) { if (activeTab === 'stories' && isStoryPlaying && !showIntroVideo && videoEnded && !albumExpired) audioRef.current.play().catch(function() {}); else audioRef.current.pause(); } }, [isStoryPlaying, activeTab, audioLoaded, showIntroVideo, videoEnded, albumExpired]);
   useEffect(function() { if (audioRef.current) audioRef.current.muted = isMuted; }, [isMuted]);
   useEffect(function() { if (storyBarsRef.current && album.photos?.length > 0) { var activeBar = storyBarsRef.current.children[currentStoryIdx]; if (activeBar) { activeBar.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' }); } } }, [currentStoryIdx, album.photos]);
   useEffect(function() { if (activeTab === 'stories' && storyBarsRef.current && album.photos?.length > 0) { var activeBar = storyBarsRef.current.children[currentStoryIdx]; if (activeBar) { setTimeout(function() { activeBar.scrollIntoView({ behavior: 'auto', inline: 'center', block: 'nearest' }); }, 100); } } }, [activeTab]);
-  useEffect(function() {
-    if (activeTab === 'stories' && isStoryPlaying && album.photos?.length > 0 && !showIntroVideo && videoEnded && !albumExpired) {
-      var d = 4000; storyStartTimeRef.current = Date.now() - (storyProgress * d);
-      storyTimerRef.current = setInterval(function() { var el = Date.now() - storyStartTimeRef.current; var p = el / d; if (p >= 1) { if (currentStoryIdx < album.photos.length - 1) { setCurrentStoryIdx(function(v) { return v + 1; }); setStoryProgress(0); storyStartTimeRef.current = Date.now(); } else { setIsStoryPlaying(false); setActiveTab('gallery'); clearInterval(storyTimerRef.current); } } else { setStoryProgress(p); } }, 100);
-    } else { if (storyTimerRef.current) { clearInterval(storyTimerRef.current); storyTimerRef.current = null; } }
-    return function() { if (storyTimerRef.current) clearInterval(storyTimerRef.current); };
-  }, [activeTab, isStoryPlaying, currentStoryIdx, album.photos, showIntroVideo, videoEnded, albumExpired]);
+  useEffect(function() { if (activeTab === 'stories' && isStoryPlaying && album.photos?.length > 0 && !showIntroVideo && videoEnded && !albumExpired) { var d = 4000; storyStartTimeRef.current = Date.now() - (storyProgress * d); storyTimerRef.current = setInterval(function() { var el = Date.now() - storyStartTimeRef.current; var p = el / d; if (p >= 1) { if (currentStoryIdx < album.photos.length - 1) { setCurrentStoryIdx(function(v) { return v + 1; }); setStoryProgress(0); storyStartTimeRef.current = Date.now(); } else { setIsStoryPlaying(false); setActiveTab('gallery'); clearInterval(storyTimerRef.current); } } else { setStoryProgress(p); } }, 100); } else { if (storyTimerRef.current) { clearInterval(storyTimerRef.current); storyTimerRef.current = null; } } return function() { if (storyTimerRef.current) clearInterval(storyTimerRef.current); }; }, [activeTab, isStoryPlaying, currentStoryIdx, album.photos, showIntroVideo, videoEnded, albumExpired]);
 
   var loadMorePhotos = useCallback(function() { if (isLoadingMore || visiblePhotos >= (album.photos?.length || 0)) return; setIsLoadingMore(true); setTimeout(function() { setVisiblePhotos(function(v) { return Math.min(v + 12, album.photos?.length || 0); }); setIsLoadingMore(false); }, 300); }, [visiblePhotos, album.photos, isLoadingMore]);
   useEffect(function() { if (activeTab !== 'gallery') return; var o = new IntersectionObserver(function(e) { if (e[0].isIntersecting) loadMorePhotos(); }, { threshold: 0.1 }); var s = document.getElementById('scroll-sentinel'); if (s) o.observe(s); return function() { o.disconnect(); }; }, [activeTab, loadMorePhotos, visiblePhotos]);
@@ -353,7 +327,6 @@ function ClientApp(props) {
   var handleShareCurrentStory = function() { if (album.photos && album.photos[currentStoryIdx]) { handleSharePhoto(album.photos[currentStoryIdx]); } };
   var hasWhatsApp = album.whatsappNumber?.trim();
 
-  // TELA DE VÍDEO INTRO - CORRIGIDA (overlay não fica sobre o vídeo)
   if (isAuthenticated && showIntroVideo && album.introVideo && !albumExpired) {
     var orientation = detectVideoOrientation(album.introVideo);
     var isVertical = orientation === 'vertical';
@@ -363,19 +336,7 @@ function ClientApp(props) {
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', position: 'relative' }}>
           <div style={{ width: isVertical ? 'min(100%, 420px)' : 'min(100%, 90vw)', maxHeight: '100dvh', aspectRatio: isVertical ? '9/16' : '16/9', position: 'relative', overflow: 'hidden', borderRadius: isVertical ? '20px' : '12px', background: '#000', boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
             <video ref={videoRef} src={album.introVideo} autoPlay playsInline muted={false} preload="auto" onEnded={handleVideoEnded} onError={handleVideoError} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-            
-            {/* Overlay APENAS quando o vídeo NÃO começou a tocar */}
-            {showVideoOverlay && (
-              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', zIndex: 10, pointerEvents: 'none' }}>
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(212,175,55,0.25)', border: '3px solid rgba(212,175,55,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', animation: 'pulse-play 2s ease-in-out infinite' }}>
-                  <Play size={38} fill="rgba(212,175,55,0.95)" color="rgba(212,175,55,0.95)" style={{ marginLeft: '3px' }} />
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ color: 'white', fontSize: '1.05rem', fontWeight: 600, margin: '0 0 6px 0' }}>Aguarde o video esta carregando</p>
-                  <p style={{ color: 'rgba(212,175,55,0.9)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>o video sera iniciado automaticamente</p>
-                </div>
-              </div>
-            )}
+            {showVideoOverlay && <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', zIndex: 10, pointerEvents: 'none' }}><div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(212,175,55,0.25)', border: '3px solid rgba(212,175,55,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', animation: 'pulse-play 2s ease-in-out infinite' }}><Play size={38} fill="rgba(212,175,55,0.95)" color="rgba(212,175,55,0.95)" style={{ marginLeft: '3px' }} /></div><div style={{ textAlign: 'center' }}><p style={{ color: 'white', fontSize: '1.05rem', fontWeight: 600, margin: '0 0 6px 0' }}>Aguarde o video esta carregando</p><p style={{ color: 'rgba(212,175,55,0.9)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>o video sera iniciado automaticamente</p></div></div>}
           </div>
         </div>
         <button onClick={function(e) { e.stopPropagation(); handleSkipVideo(); }} style={{ position: 'fixed', bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', color: 'white', padding: '0.7rem 1.3rem', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}><SkipForward size={16} /> Pular Video</button>
@@ -481,13 +442,20 @@ function AdminDashboard(props) {
   var _useState29 = useState(null), copiedId = _useState29[0], setCopiedId = _useState29[1];
   var handleLogout = function() { sessionStorage.removeItem('adminLoggedIn'); sessionStorage.removeItem('adminUser'); setIsAdminLoggedIn(false); };
   var handleDeleteAlbum = function(shortId) { if(window.confirm('Excluir este álbum permanentemente?')) { deleteAlbumFromSheets(shortId).then(function(success) { if (success) { setAlbums(albums.filter(function(a) { return a.shortId !== shortId; })); alert('✅ Álbum excluído!'); } else { alert('❌ Erro ao excluir.'); } }).catch(function() { alert('❌ Erro ao conectar.'); }); } };
+  // Link de cópia atualizado para usar /preview
+  var handleCopyLink = function(album) {
+    var previewUrl = window.location.origin + '/preview#/album/' + album.shortId;
+    navigator.clipboard.writeText(previewUrl);
+    setCopiedId(album.id);
+    setTimeout(function() { setCopiedId(null); }, 2000);
+  };
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-gray-900">
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 sm:px-8 py-3 sm:py-4 flex justify-between items-center sticky top-0 z-10">
         <div className="flex items-center gap-2"><div className="bg-black text-[#d4af37] p-1.5 rounded-lg"><Camera size={20} /></div><h1 className="text-lg sm:text-xl font-semibold">Studio Dashboard</h1></div>
         <div className="flex items-center gap-2"><button onClick={function() { window.location.hash = '#new'; }} className="bg-black text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full font-medium flex items-center gap-1.5 hover:bg-gray-800 transition-all text-xs sm:text-sm shadow-sm"><Plus size={14} /> <span className="hidden sm:inline">Criar Album</span></button><button onClick={handleLogout} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1 transition-all" title="Sair"><LogOut size={14} /></button></div>
       </header>
-      <main className="max-w-7xl mx-auto p-4 sm:p-6"><div className="mb-6"><h2 className="text-xl sm:text-2xl font-semibold">Os Meus Envios</h2><p className="text-gray-500 text-xs mt-0.5">Albuns armazenados de forma permanente.</p></div>{isLoading ? <div className="flex justify-center py-16"><Loader2 size={36} className="animate-spin text-gray-400" /></div> : albums.length === 0 ? <div className="bg-white rounded-2xl border border-gray-200 p-10 sm:p-14 text-center"><div className="bg-gray-100 rounded-full p-3 mb-3 inline-block"><ImageIcon size={36} className="text-gray-400" /></div><h3 className="text-base font-semibold text-gray-700">Nenhum album criado</h3></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">{albums.map(function(album) { var expired = isAlbumExpired(album); var daysLeft = getDaysRemaining(album); return <div key={album.id} className={'bg-white rounded-2xl shadow-sm border hover:shadow-md transition-shadow p-4 flex flex-col ' + (expired ? 'border-red-300 bg-red-50/30' : 'border-gray-100')}><div className="flex items-center gap-3 mb-3"><div className="w-12 h-12 rounded-full overflow-hidden bg-gray-100"><img src={album.profileImage || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} alt="Cover" className="w-full h-full object-cover" /></div><div className="flex-1"><h3 className="font-semibold text-base truncate">{album.clientName}</h3><p className="text-xs text-gray-500">{album.subtitle}</p></div></div><div className="bg-gray-50 p-2.5 rounded-xl text-xs text-gray-600 mb-1.5">📸 {(album.photos || []).length} fotos | 🔑 ID: {album.shortId}</div>{album.expiryDate && <div className={'rounded-lg p-2 mb-2 flex items-center gap-1.5 text-[10px] ' + (expired ? 'bg-red-100 text-red-700' : daysLeft <= 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700')}><Clock size={12} /><span>{expired ? 'Expirado' : daysLeft + ' dia(s) restantes'}</span></div>}<div className="mt-auto flex items-center justify-between pt-3 border-t border-gray-100"><div className="flex gap-1"><button onClick={function() { window.location.hash = '#edit_' + album.id; }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg"><Edit3 size={16} /></button><button onClick={function() { handleDeleteAlbum(album.shortId); }} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg"><Trash2 size={16} /></button></div><button onClick={function() { var url = window.location.origin + window.location.pathname + '#/album/' + album.shortId; navigator.clipboard.writeText(url); setCopiedId(album.id); setTimeout(function() { setCopiedId(null); }, 2000); }} className={'px-3 py-1.5 rounded-full font-medium text-xs flex items-center gap-1 ' + (copiedId === album.id ? 'bg-green-500 text-white' : 'bg-black text-white')}>{copiedId === album.id ? <CheckCircle size={11} /> : <LinkIcon size={11} />}Copiar Link</button></div></div>; })}</div>}</main>
+      <main className="max-w-7xl mx-auto p-4 sm:p-6"><div className="mb-6"><h2 className="text-xl sm:text-2xl font-semibold">Os Meus Envios</h2><p className="text-gray-500 text-xs mt-0.5">Albuns armazenados de forma permanente.</p></div>{isLoading ? <div className="flex justify-center py-16"><Loader2 size={36} className="animate-spin text-gray-400" /></div> : albums.length === 0 ? <div className="bg-white rounded-2xl border border-gray-200 p-10 sm:p-14 text-center"><div className="bg-gray-100 rounded-full p-3 mb-3 inline-block"><ImageIcon size={36} className="text-gray-400" /></div><h3 className="text-base font-semibold text-gray-700">Nenhum album criado</h3></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">{albums.map(function(album) { var expired = isAlbumExpired(album); var daysLeft = getDaysRemaining(album); return <div key={album.id} className={'bg-white rounded-2xl shadow-sm border hover:shadow-md transition-shadow p-4 flex flex-col ' + (expired ? 'border-red-300 bg-red-50/30' : 'border-gray-100')}><div className="flex items-center gap-3 mb-3"><div className="w-12 h-12 rounded-full overflow-hidden bg-gray-100"><img src={album.profileImage || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} alt="Cover" className="w-full h-full object-cover" /></div><div className="flex-1"><h3 className="font-semibold text-base truncate">{album.clientName}</h3><p className="text-xs text-gray-500">{album.subtitle}</p></div></div><div className="bg-gray-50 p-2.5 rounded-xl text-xs text-gray-600 mb-1.5">📸 {(album.photos || []).length} fotos | 🔑 ID: {album.shortId}</div>{album.expiryDate && <div className={'rounded-lg p-2 mb-2 flex items-center gap-1.5 text-[10px] ' + (expired ? 'bg-red-100 text-red-700' : daysLeft <= 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700')}><Clock size={12} /><span>{expired ? 'Expirado' : daysLeft + ' dia(s) restantes'}</span></div>}<div className="mt-auto flex items-center justify-between pt-3 border-t border-gray-100"><div className="flex gap-1"><button onClick={function() { window.location.hash = '#edit_' + album.id; }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg"><Edit3 size={16} /></button><button onClick={function() { handleDeleteAlbum(album.shortId); }} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg"><Trash2 size={16} /></button></div><button onClick={function() { handleCopyLink(album); }} className={'px-3 py-1.5 rounded-full font-medium text-xs flex items-center gap-1 ' + (copiedId === album.id ? 'bg-green-500 text-white' : 'bg-black text-white')}>{copiedId === album.id ? <CheckCircle size={11} /> : <LinkIcon size={11} />}Copiar Link</button></div></div>; })}</div>}</main>
     </div>
   );
 }
