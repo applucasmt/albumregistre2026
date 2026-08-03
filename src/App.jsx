@@ -40,6 +40,7 @@ function detectVideoOrientation(url) {
   return 'vertical';
 }
 
+// Função otimizada para upload de vídeo com transformações para melhor performance
 function uploadVideoToCloudinary(file, albumId) {
   return new Promise(function(resolve, reject) {
     var xhr = new XMLHttpRequest();
@@ -47,6 +48,11 @@ function uploadVideoToCloudinary(file, albumId) {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
     formData.append('folder', CLOUDINARY_CONFIG.folder + '/' + albumId);
+    // Adicionar transformações para otimizar o vídeo
+    formData.append('transformation', JSON.stringify([
+      { quality: 'auto:good', fetch_format: 'auto' },
+      { aspect_ratio: '9:16', crop: 'limit' }
+    ]));
     xhr.open('POST', 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/video/upload', true);
     xhr.onload = function() { if (xhr.status >= 200 && xhr.status < 300) { var data = JSON.parse(xhr.responseText); resolve(data.secure_url); } else { reject(new Error('Erro no upload do video')); } };
     xhr.onerror = function() { reject(new Error('Erro de rede ao enviar video')); };
@@ -68,6 +74,13 @@ async function uploadToCloudinary(file, albumId, resourceType) {
     const data = await response.json();
     return data.secure_url;
   } catch (error) { console.error('Erro no upload:', error); throw error; }
+}
+
+// Função para gerar URL otimizada do vídeo no Cloudinary
+function getOptimizedVideoUrl(videoUrl) {
+  if (!videoUrl || !videoUrl.includes('cloudinary')) return videoUrl;
+  // Substituir para usar formato otimizado
+  return videoUrl.replace('/upload/', '/upload/f_auto,q_auto/g_auto/');
 }
 
 function updateFavicon(photoUrl) {
@@ -215,9 +228,14 @@ function ClientApp(props) {
   var expiryDateFormatted = formatExpiryDate(album);
   var daysRemaining = getDaysRemaining(album);
   
-  // Estado para a notificação de buffering
   var _useStateBuffer = useState(false), showBuffering = _useStateBuffer[0], setShowBuffering = _useStateBuffer[1];
   var bufferTimeoutRef = useRef(null);
+  
+  // Usar URL otimizada do vídeo se disponível
+  var optimizedVideoUrl = useMemo(function() {
+    if (!album.introVideo) return null;
+    return getOptimizedVideoUrl(album.introVideo);
+  }, [album.introVideo]);
   
   var featuredList = useMemo(function() {
     return album.featuredPhotos?.length > 0 ? album.featuredPhotos.map(function(idx) { return album.photos[idx]; }).filter(Boolean) : album.photos?.slice(0, 5) || [];
@@ -236,7 +254,7 @@ function ClientApp(props) {
     }
   }, [isAuthenticated, album.introVideo, videoEnded, videoError, albumExpired]);
   
-  // Gerenciar eventos do vídeo - notificação de buffering em popup pequeno
+  // Gerenciar eventos do vídeo com URL otimizada
   useEffect(function() {
     if (showIntroVideo && videoRef.current) {
       var video = videoRef.current;
@@ -258,9 +276,7 @@ function ClientApp(props) {
       };
       
       var handleWaiting = function() {
-        // Mostra notificação de buffering apenas se o vídeo já começou a tocar
         if (hasStartedPlaying) {
-          // Pequeno delay para evitar flickering
           if (bufferTimeoutRef.current) clearTimeout(bufferTimeoutRef.current);
           bufferTimeoutRef.current = setTimeout(function() {
             setShowBuffering(true);
@@ -297,10 +313,8 @@ function ClientApp(props) {
         setShowVideoOverlay(false);
       };
       
-      // Monitora o progresso do buffering periodicamente
       var checkBufferProgress = function() {
         if (video && hasStartedPlaying) {
-          // Se o vídeo está pausado por buffering e não está no fim
           if (video.paused && !video.ended && video.readyState < 3 && video.currentTime > 0) {
             setShowBuffering(true);
           }
@@ -313,7 +327,6 @@ function ClientApp(props) {
       video.addEventListener('stalled', handleStalled);
       video.addEventListener('canplaythrough', handleCanPlayThrough);
       
-      // Verifica a cada 2 segundos se o vídeo está com buffering
       bufferCheckInterval = setInterval(checkBufferProgress, 2000);
       
       video.play().catch(function() {
@@ -332,7 +345,6 @@ function ClientApp(props) {
     }
   }, [showIntroVideo]);
   
-  // Overlay inicial some após 5 segundos no máximo
   useEffect(function() {
     if (showIntroVideo && showVideoOverlay) {
       var timer = setTimeout(function() { 
@@ -385,18 +397,18 @@ function ClientApp(props) {
   var handleShareCurrentStory = function() { if (album.photos && album.photos[currentStoryIdx]) { handleSharePhoto(album.photos[currentStoryIdx]); } };
   var hasWhatsApp = album.whatsappNumber?.trim();
 
-  // TELA DE VÍDEO INTRO - com notificação de buffering em popup pequeno
+  // TELA DE VÍDEO INTRO - com URL otimizada
   if (isAuthenticated && showIntroVideo && album.introVideo && !albumExpired) {
     var orientation = detectVideoOrientation(album.introVideo);
     var isVertical = orientation === 'vertical';
+    var videoSrc = optimizedVideoUrl || album.introVideo;
     return (
       <div onClick={function() { if (showVideoOverlay) setShowVideoOverlay(false); }} style={{ margin: 0, padding: 0, background: '#000', display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100dvh', width: '100vw', position: 'fixed', top: 0, left: 0, zIndex: 9999, overflow: 'hidden', cursor: showVideoOverlay ? 'pointer' : 'default' }}>
         <style>{'@keyframes pulse-play{0%,100%{transform:scale(1);opacity:.9}50%{transform:scale(1.08);opacity:1}}@keyframes slideDown{0%{transform:translateY(-20px);opacity:0}100%{transform:translateY(0);opacity:1}}'}</style>
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', position: 'relative' }}>
           <div style={{ width: isVertical ? 'min(100%, 420px)' : 'min(100%, 90vw)', maxHeight: '100dvh', aspectRatio: isVertical ? '9/16' : '16/9', position: 'relative', overflow: 'hidden', borderRadius: isVertical ? '20px' : '12px', background: '#000', boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
-            <video ref={videoRef} src={album.introVideo} autoPlay playsInline muted={false} preload="auto" onEnded={handleVideoEnded} onError={handleVideoError} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+            <video ref={videoRef} src={videoSrc} autoPlay playsInline muted={false} preload="auto" onEnded={handleVideoEnded} onError={handleVideoError} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
             
-            {/* Notificação de buffering - popup pequeno no topo */}
             {showBuffering && (
               <div style={{ 
                 position: 'absolute', 
@@ -430,7 +442,6 @@ function ClientApp(props) {
               </div>
             )}
             
-            {/* Overlay de carregamento inicial - APENAS quando o vídeo NÃO começou a tocar */}
             {showVideoOverlay && !showBuffering && (
               <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', zIndex: 10, pointerEvents: 'none' }}>
                 <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(212,175,55,0.25)', border: '3px solid rgba(212,175,55,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', animation: 'pulse-play 2s ease-in-out infinite' }}>
@@ -495,7 +506,7 @@ function ClientApp(props) {
       </div>
       {album.expiryDate && daysRemaining !== null && daysRemaining <= 7 && <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3"><div className={'rounded-xl p-3 flex items-center gap-2 ' + (albumExpired ? 'bg-red-500/10 border border-red-500/30' : 'bg-yellow-500/10 border border-yellow-500/30')}><Clock size={16} className={albumExpired ? 'text-red-400' : 'text-yellow-400'} /><p className={'text-xs ' + (albumExpired ? 'text-red-400' : 'text-yellow-400')}>{albumExpired ? 'Este album expirou.' : 'Este album expira em ' + daysRemaining + ' dia(s).'}</p></div></div>}
       {activeTab === 'video' && album.introVideo && (
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4"><div className="flex items-center justify-between mb-3 sm:mb-4"><h2 className="text-sm sm:text-base font-semibold text-gray-200">Video de Abertura</h2><button onClick={function() { setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); }} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><SkipForward size={12} /> Pular para Stories</button></div><div style={{ display: 'flex', justifyContent: 'center' }}><div style={{ width: '100%', maxWidth: '420px', aspectRatio: '9/16', maxHeight: '70vh', position: 'relative', overflow: 'hidden', borderRadius: '20px', background: '#000' }}><video src={album.introVideo} controls autoPlay playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} /></div></div></div>
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4"><div className="flex items-center justify-between mb-3 sm:mb-4"><h2 className="text-sm sm:text-base font-semibold text-gray-200">Video de Abertura</h2><button onClick={function() { setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); }} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><SkipForward size={12} /> Pular para Stories</button></div><div style={{ display: 'flex', justifyContent: 'center' }}><div style={{ width: '100%', maxWidth: '420px', aspectRatio: '9/16', maxHeight: '70vh', position: 'relative', overflow: 'hidden', borderRadius: '20px', background: '#000' }}><video src={optimizedVideoUrl || album.introVideo} controls autoPlay playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} /></div></div></div>
       )}
       {activeTab === 'gallery' && (
         <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4"><div className="flex items-center justify-between mb-3 sm:mb-4"><h2 className="text-sm sm:text-base font-semibold text-gray-200">Galeria ({(album.photos || []).length})</h2><div className="flex gap-1.5 sm:gap-2">{hasWhatsApp && <button onClick={handleWhatsAppContact} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#25D366] hover:bg-[#20b859] text-white font-semibold px-3 py-1.5 rounded-full shadow-md"><MessageCircle size={12} /> Falar com o fotografo</button>}<button onClick={handleDownloadRedirect} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><Download size={12} /> Baixar</button></div></div>
@@ -535,10 +546,211 @@ function AlbumLoader(props) {
   var _useState26 = useState('fetching'), status = _useState26[0], setStatus = _useState26[1];
   var _useState27 = useState(0), ap = _useState27[0], setAp = _useState27[1];
   var _useState28 = useState(0), vp = _useState28[0], setVp = _useState28[1];
-  useEffect(function() { (async function() { try { var d = await loadAlbumFromSheets(shortId); if (d) { setAlbum(d); setStatus('preloading'); var urls = [d.loaderLogo, d.profileImage].concat(d.loaderBackgrounds||[]).concat(d.photos||[]).filter(Boolean); var l=0; urls.forEach(function(u) { var img=new Image(); img.src=u; img.onload=img.onerror=function(){l++;setAp(Math.round((l/urls.length)*100));}; }); updateMetaTags(d); } else setStatus('error'); } catch(e) { setStatus('error'); } })(); }, [shortId]);
-  useEffect(function() { if (status!=='preloading') return; var i=setInterval(function(){setVp(function(p){if(ap===100){if(p>=100){clearInterval(i);setTimeout(function(){setStatus('ready');},400);return 100;}return p+1;}return p<ap?p+1:p;});},50); return function(){clearInterval(i);}; }, [status,ap]);
+  var _useStateVideoPreload = useState(false), videoPreloaded = _useStateVideoPreload[0], setVideoPreloaded = _useStateVideoPreload[1];
+  var _useStateVideoProgress = useState(0), videoProgress = _useStateVideoProgress[0], setVideoProgress = _useStateVideoProgress[1];
+  var videoPreloadRef = useRef(null);
+  
+  useEffect(function() { 
+    (async function() { 
+      try { 
+        var d = await loadAlbumFromSheets(shortId); 
+        if (d) { 
+          setAlbum(d); 
+          setStatus('preloading'); 
+          
+          // Coletar todas as URLs para pré-carregamento
+          var urls = [d.loaderLogo, d.profileImage].concat(d.loaderBackgrounds||[]).concat(d.photos||[]).filter(Boolean);
+          
+          // Adicionar vídeo para pré-carregamento se existir
+          var videoUrl = d.introVideo;
+          var totalItems = urls.length + (videoUrl ? 1 : 0);
+          var loadedItems = 0;
+          
+          // Função para atualizar progresso
+          var updateProgress = function() {
+            loadedItems++;
+            var progress = Math.round((loadedItems / totalItems) * 100);
+            setAp(progress);
+            // Atualizar também o progresso do vídeo separadamente
+            if (videoUrl && loadedItems >= urls.length) {
+              setVideoProgress(Math.min(100, Math.round(((loadedItems - urls.length) / 1) * 100)));
+            }
+          };
+          
+          // Pré-carregar imagens
+          urls.forEach(function(u) { 
+            var img = new Image(); 
+            img.src = u; 
+            img.onload = function() { 
+              updateProgress(); 
+            }; 
+            img.onerror = function() { 
+              updateProgress(); 
+            }; 
+          });
+          
+          // PRÉ-CARREGAR O VÍDEO EM BACKGROUND
+          if (videoUrl) {
+            // Versão otimizada do vídeo
+            var optimizedVideo = getOptimizedVideoUrl(videoUrl);
+            
+            // Método 1: Usar link preload
+            var preloadLink = document.createElement('link');
+            preloadLink.rel = 'preload';
+            preloadLink.as = 'video';
+            preloadLink.href = optimizedVideo;
+            preloadLink.type = 'video/mp4';
+            document.head.appendChild(preloadLink);
+            
+            // Método 2: Criar elemento de vídeo oculto para pré-carregar
+            var preloadVideo = document.createElement('video');
+            preloadVideo.src = optimizedVideo;
+            preloadVideo.preload = 'auto';
+            preloadVideo.muted = true;
+            preloadVideo.style.display = 'none';
+            preloadVideo.setAttribute('playsinline', '');
+            document.body.appendChild(preloadVideo);
+            videoPreloadRef.current = preloadVideo;
+            
+            // Carregar o vídeo
+            preloadVideo.load();
+            
+            // Monitorar progresso do carregamento do vídeo
+            var videoLoaded = false;
+            
+            preloadVideo.addEventListener('loadeddata', function() {
+              if (!videoLoaded) {
+                videoLoaded = true;
+                setVideoPreloaded(true);
+                updateProgress();
+                // Remover o vídeo oculto após carregar
+                setTimeout(function() {
+                  if (videoPreloadRef.current) {
+                    document.body.removeChild(videoPreloadRef.current);
+                    videoPreloadRef.current = null;
+                  }
+                }, 3000);
+              }
+            });
+            
+            preloadVideo.addEventListener('error', function() {
+              // Em caso de erro, ainda assim contar como carregado para não travar
+              if (!videoLoaded) {
+                videoLoaded = true;
+                updateProgress();
+              }
+            });
+            
+            // Timeout para não ficar preso no carregamento
+            setTimeout(function() {
+              if (!videoLoaded) {
+                videoLoaded = true;
+                updateProgress();
+                if (videoPreloadRef.current) {
+                  document.body.removeChild(videoPreloadRef.current);
+                  videoPreloadRef.current = null;
+                }
+              }
+            }, 30000); // 30 segundos de timeout
+          }
+          
+          updateMetaTags(d); 
+        } else { 
+          setStatus('error'); 
+        } 
+      } catch(e) { 
+        setStatus('error'); 
+      } 
+    })(); 
+    
+    return function() {
+      // Cleanup
+      if (videoPreloadRef.current) {
+        try {
+          document.body.removeChild(videoPreloadRef.current);
+        } catch(e) {}
+        videoPreloadRef.current = null;
+      }
+    };
+  }, [shortId]);
+  
+  useEffect(function() { 
+    if (status!=='preloading') return; 
+    var i = setInterval(function(){
+      setVp(function(p){
+        if(ap===100){
+          if(p>=100){
+            clearInterval(i);
+            setTimeout(function(){
+              setStatus('ready');
+            },400);
+            return 100;
+          }
+          return p+1;
+        }
+        return p<ap?p+1:p;
+      });
+    },50); 
+    return function(){ clearInterval(i); }; 
+  }, [status, ap]);
+
+  // Mostrar indicador de pré-carregamento do vídeo durante o loading
+  var isVideoLoading = album?.introVideo && !videoPreloaded && ap < 100;
+  
   if (status==='error') return <div className="h-screen bg-black text-white flex flex-col items-center justify-center"><X size={48} className="text-red-500 mb-4"/><h2 className="text-xl">Album nao encontrado</h2></div>;
-  if (status==='fetching'||status==='preloading') { var bg=album?.loaderBackgrounds?.length>0?album.loaderBackgrounds:album?.photos||[]; return <div className="h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-4 relative overflow-hidden"><style>{'@keyframes fadeRandom{0%,100%{opacity:0;transform:scale(.9)}50%{opacity:.7;transform:scale(1.05)}}@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}'}</style><div className="absolute inset-0 z-0 flex items-center justify-center"><div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 w-full h-[120%] rotate-[-4deg] scale-110 opacity-30">{Array.from({length:25}).map(function(_,i){var s=bg[i%(bg.length||1)];if(!s)return null;return <div key={i} className="relative w-full aspect-square rounded-xl overflow-hidden bg-neutral-900" style={{animation:'fadeRandom '+(3+Math.random()*4)+'s infinite ease-in-out '+(Math.random()*2)+'s'}}><img src={s} className="w-full h-full object-cover grayscale brightness-75" alt="" /></div>;})}</div></div><div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a]/90 via-[#0a0a0a]/60 to-[#0a0a0a] z-0" /><div className="relative z-10 text-center max-w-sm w-full flex flex-col items-center"><div className="relative w-48 h-48 mb-6 flex items-center justify-center"><div className="w-32 h-32 rounded-full overflow-hidden border-4 border-[#d4af37] shadow-[0_0_40px_rgba(212,175,55,0.4)] bg-neutral-900 relative flex items-center justify-center p-2">{album?.loaderLogo ? <img src={album.loaderLogo} alt="Logo" className="w-full h-full object-contain" /> : album?.profileImage || album?.photos?.[0] ? <img src={album.profileImage || album.photos[0]} alt="Perfil" className="w-full h-full object-cover rounded-full" /> : <div className="w-full h-full bg-neutral-800 animate-pulse flex items-center justify-center rounded-full"><Camera size={24} className="text-neutral-600" /></div>}</div></div><h2 className="text-2xl font-bold tracking-tight text-white mb-1">{album?.clientName || 'Conectando...'}</h2><p className="text-gray-400 text-sm mb-8">{album?.subtitle || 'Preparando experiencia visual...'}</p><span className="text-xs text-[#d4af37] tracking-widest uppercase font-bold mb-3 block animate-pulse">Criando seu Album {status === 'preloading' ? vp + '%' : ''}</span><div className="w-48 bg-white/10 h-[5px] rounded-full overflow-hidden border border-white/5 relative mx-auto">{status === 'fetching' ? <div className="h-full w-1/3 bg-gradient-to-r from-[#d4af37] to-[#f3e5ab] rounded-full animate-[slide_1.5s_ease-in-out_infinite]" /> : <div className="h-full bg-gradient-to-r from-[#d4af37] to-[#f3e5ab] transition-all duration-300 ease-out rounded-full" style={{width: vp + '%'}} />}</div></div></div>; }
+  if (status==='fetching'||status==='preloading') { 
+    var bg=album?.loaderBackgrounds?.length>0?album.loaderBackgrounds:album?.photos||[]; 
+    return (
+      <div className="h-screen bg-[#0a0a0a] text-white flex flex-col items-center justify-center p-4 relative overflow-hidden">
+        <style>{'@keyframes fadeRandom{0%,100%{opacity:0;transform:scale(.9)}50%{opacity:.7;transform:scale(1.05)}}@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}@keyframes pulse-dot{0%,100%{opacity:0.3}50%{opacity:1}}'}</style>
+        <div className="absolute inset-0 z-0 flex items-center justify-center">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 w-full h-[120%] rotate-[-4deg] scale-110 opacity-30">
+            {Array.from({length:25}).map(function(_,i){var s=bg[i%(bg.length||1)];if(!s)return null;return <div key={i} className="relative w-full aspect-square rounded-xl overflow-hidden bg-neutral-900" style={{animation:'fadeRandom '+(3+Math.random()*4)+'s infinite ease-in-out '+(Math.random()*2)+'s'}}><img src={s} className="w-full h-full object-cover grayscale brightness-75" alt="" /></div>;})}
+          </div>
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a]/90 via-[#0a0a0a]/60 to-[#0a0a0a] z-0" />
+        <div className="relative z-10 text-center max-w-sm w-full flex flex-col items-center">
+          <div className="relative w-48 h-48 mb-6 flex items-center justify-center">
+            <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-[#d4af37] shadow-[0_0_40px_rgba(212,175,55,0.4)] bg-neutral-900 relative flex items-center justify-center p-2">
+              {album?.loaderLogo ? <img src={album.loaderLogo} alt="Logo" className="w-full h-full object-contain" /> : album?.profileImage || album?.photos?.[0] ? <img src={album.profileImage || album.photos[0]} alt="Perfil" className="w-full h-full object-cover rounded-full" /> : <div className="w-full h-full bg-neutral-800 animate-pulse flex items-center justify-center rounded-full"><Camera size={24} className="text-neutral-600" /></div>}
+            </div>
+          </div>
+          <h2 className="text-2xl font-bold tracking-tight text-white mb-1">{album?.clientName || 'Conectando...'}</h2>
+          <p className="text-gray-400 text-sm mb-8">{album?.subtitle || 'Preparando experiencia visual...'}</p>
+          
+          {/* Indicador de progresso com status do vídeo */}
+          <div className="w-full max-w-xs space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-xs text-[#d4af37] tracking-widest uppercase font-bold animate-pulse">
+                {status === 'preloading' ? 'Preparando seu Album' : 'Conectando...'}
+              </span>
+              <span className="text-xs text-gray-400 font-mono">{vp}%</span>
+            </div>
+            <div className="w-full bg-white/10 h-[5px] rounded-full overflow-hidden border border-white/5 relative">
+              {status === 'fetching' ? 
+                <div className="h-full w-1/3 bg-gradient-to-r from-[#d4af37] to-[#f3e5ab] rounded-full animate-[slide_1.5s_ease-in-out_infinite]" /> : 
+                <div className="h-full bg-gradient-to-r from-[#d4af37] to-[#f3e5ab] transition-all duration-300 ease-out rounded-full" style={{width: vp + '%'}} />
+              }
+            </div>
+            
+            {/* Indicador de pré-carregamento do vídeo */}
+            {album?.introVideo && status === 'preloading' && (
+              <div className="flex items-center justify-center gap-2 mt-2">
+                <div className="flex gap-1">
+                  <span className="w-1.5 h-1.5 bg-[#d4af37] rounded-full" style={{animation: 'pulse-dot 1.2s ease-in-out infinite', animationDelay: '0s'}}></span>
+                  <span className="w-1.5 h-1.5 bg-[#d4af37] rounded-full" style={{animation: 'pulse-dot 1.2s ease-in-out infinite', animationDelay: '0.2s'}}></span>
+                  <span className="w-1.5 h-1.5 bg-[#d4af37] rounded-full" style={{animation: 'pulse-dot 1.2s ease-in-out infinite', animationDelay: '0.4s'}}></span>
+                </div>
+                <span className="text-[10px] text-gray-500">
+                  {videoPreloaded ? '✅ Vídeo carregado' : 'Carregando vídeo...'}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    ); 
+  }
   return <ClientApp album={album} />;
 }
 
