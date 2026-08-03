@@ -3,6 +3,10 @@
     {
       "source": "/preview",
       "destination": "/preview.html"
+    },
+    {
+      "source": "/preview/(.*)",
+      "destination": "/preview.html"
     }
   ]
 }
