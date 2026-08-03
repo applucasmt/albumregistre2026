@@ -136,31 +136,34 @@ function isAlbumExpired(album) { if (!album) return false; if (album._isExpired 
 function formatExpiryDate(album) { var dateStr = album._expiryDate || album.expiryDate; if (!dateStr) return null; try { var d = new Date(dateStr); return d.toLocaleDateString('pt-BR'); } catch (e) { return dateStr; } }
 function getDaysRemaining(album) { var dateStr = album._expiryDate || album.expiryDate; if (!dateStr) return null; try { var now = new Date(); var expiry = new Date(dateStr); var diff = expiry.getTime() - now.getTime(); return Math.ceil(diff / (1000 * 60 * 60 * 24)); } catch (e) { return null; } }
 
+// Função de compartilhamento - envia link de preview do Google Apps Script
 async function sharePhoto(photoUrl, album) {
-  try { 
-    const response = await fetch(photoUrl); 
-    const blob = await response.blob(); 
-    const file = new File([blob], 'foto.jpg', { type: 'image/jpeg' }); 
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { 
-      // Compartilhar com link de preview para redes sociais
-      var previewUrl = window.location.origin + '/preview#/album/' + album.shortId;
+  try {
+    // Link de preview que gera HTML com meta tags (funciona no WhatsApp/Instagram)
+    var previewUrl = SHEETS_API_URL + '?id=' + album.shortId + '&action=preview';
+    // Link normal para navegadores
+    var normalUrl = window.location.origin + '/#/album/' + album.shortId;
+    
+    const response = await fetch(photoUrl);
+    const blob = await response.blob();
+    const file = new File([blob], 'foto.jpg', { type: 'image/jpeg' });
+    
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       await navigator.share({ 
         files: [file], 
-        title: 'Foto do album ' + (album.clientName || 'Album'), 
-        text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸\n\nVeja o album completo: ' + previewUrl
-      }); 
-    } else if (navigator.share) { 
-      var previewUrl2 = window.location.origin + '/preview#/album/' + album.shortId;
+        title: album.clientName || 'Álbum Fotográfico', 
+        text: '📸 ' + (album.clientName || 'Álbum Fotográfico') + '\n' + (album.subtitle || '') + '\n\nVeja o álbum completo: ' + normalUrl
+      });
+    } else if (navigator.share) {
       await navigator.share({ 
-        title: 'Foto do album ' + (album.clientName || 'Album'), 
-        text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸\n\nVeja o album completo: ' + previewUrl2, 
-        url: previewUrl2
-      }); 
-    } else { 
-      var text = encodeURIComponent('Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸');
-      var previewUrl3 = window.location.origin + '/preview#/album/' + album.shortId;
-      window.open('https://wa.me/?text=' + text + '%20' + encodeURIComponent(previewUrl3), '_blank'); 
-    } 
+        title: album.clientName || 'Álbum Fotográfico', 
+        text: '📸 ' + (album.clientName || 'Álbum Fotográfico') + '\n' + (album.subtitle || '') + '\n\nVeja o álbum completo: ' + normalUrl, 
+        url: previewUrl
+      });
+    } else {
+      var text = encodeURIComponent('📸 ' + (album.clientName || 'Álbum Fotográfico') + '\n' + (album.subtitle || '') + '\n\nVeja o álbum completo: ' + normalUrl);
+      window.open('https://wa.me/?text=' + text, '_blank');
+    }
   } catch (error) { console.log('Compartilhamento cancelado:', error); }
 }
 
@@ -300,7 +303,6 @@ function ClientApp(props) {
       return function() { video.removeEventListener('playing', handlePlaying); video.removeEventListener('waiting', handleWaiting); video.removeEventListener('canplay', handleCanPlay); video.removeEventListener('stalled', handleStalled); video.removeEventListener('canplaythrough', handleCanPlayThrough); if (stallTimeout) clearTimeout(stallTimeout); };
     }
   }, [showIntroVideo]);
-  
   useEffect(function() { if (showIntroVideo && showVideoOverlay) { var timer = setTimeout(function() { setShowVideoOverlay(false); }, 5000); return function() { clearTimeout(timer); }; } }, [showIntroVideo, showVideoOverlay]);
   useEffect(function() { if (showIntroVideo) { var t = setTimeout(function() { handleVideoEnded(); }, 600000); return function() { clearTimeout(t); }; } }, [showIntroVideo]);
   
@@ -442,9 +444,9 @@ function AdminDashboard(props) {
   var _useState29 = useState(null), copiedId = _useState29[0], setCopiedId = _useState29[1];
   var handleLogout = function() { sessionStorage.removeItem('adminLoggedIn'); sessionStorage.removeItem('adminUser'); setIsAdminLoggedIn(false); };
   var handleDeleteAlbum = function(shortId) { if(window.confirm('Excluir este álbum permanentemente?')) { deleteAlbumFromSheets(shortId).then(function(success) { if (success) { setAlbums(albums.filter(function(a) { return a.shortId !== shortId; })); alert('✅ Álbum excluído!'); } else { alert('❌ Erro ao excluir.'); } }).catch(function() { alert('❌ Erro ao conectar.'); }); } };
-  // Link de cópia atualizado para usar /preview
+  // Link de cópia com preview do Google Apps Script
   var handleCopyLink = function(album) {
-    var previewUrl = window.location.origin + '/preview#/album/' + album.shortId;
+    var previewUrl = SHEETS_API_URL + '?id=' + album.shortId + '&action=preview';
     navigator.clipboard.writeText(previewUrl);
     setCopiedId(album.id);
     setTimeout(function() { setCopiedId(null); }, 2000);
