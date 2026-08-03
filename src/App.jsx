@@ -70,46 +70,17 @@ async function uploadToCloudinary(file, albumId, resourceType) {
   } catch (error) { console.error('Erro no upload:', error); throw error; }
 }
 
-// Atualizar favicon dinamicamente com a foto de perfil do álbum
 function updateFavicon(photoUrl) {
   if (!photoUrl) return;
-  
-  // Remover favicon antigo
   var existingFavicon = document.querySelector('link[rel="icon"]');
-  if (existingFavicon) {
-    existingFavicon.remove();
-  }
-  
-  // Criar um canvas para redimensionar a imagem
+  if (existingFavicon) { existingFavicon.remove(); }
   var canvas = document.createElement('canvas');
-  canvas.width = 32;
-  canvas.height = 32;
+  canvas.width = 32; canvas.height = 32;
   var ctx = canvas.getContext('2d');
-  
   var img = new Image();
   img.crossOrigin = 'anonymous';
-  img.onload = function() {
-    // Criar efeito circular
-    ctx.beginPath();
-    ctx.arc(16, 16, 16, 0, Math.PI * 2);
-    ctx.closePath();
-    ctx.clip();
-    ctx.drawImage(img, 0, 0, 32, 32);
-    
-    // Criar elemento link para favicon
-    var favicon = document.createElement('link');
-    favicon.rel = 'icon';
-    favicon.type = 'image/png';
-    favicon.href = canvas.toDataURL('image/png');
-    document.head.appendChild(favicon);
-  };
-  img.onerror = function() {
-    // Se falhar, usar um favicon padrão
-    var favicon = document.createElement('link');
-    favicon.rel = 'icon';
-    favicon.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📸</text></svg>';
-    document.head.appendChild(favicon);
-  };
+  img.onload = function() { ctx.beginPath(); ctx.arc(16, 16, 16, 0, Math.PI * 2); ctx.closePath(); ctx.clip(); ctx.drawImage(img, 0, 0, 32, 32); var favicon = document.createElement('link'); favicon.rel = 'icon'; favicon.type = 'image/png'; favicon.href = canvas.toDataURL('image/png'); document.head.appendChild(favicon); };
+  img.onerror = function() { var favicon = document.createElement('link'); favicon.rel = 'icon'; favicon.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📸</text></svg>'; document.head.appendChild(favicon); };
   img.src = photoUrl;
 }
 
@@ -119,8 +90,6 @@ function updateMetaTags(album) {
   document.title = album.clientName || 'Album';
   const metaTags = [{ property: 'og:title', content: album.clientName || '' }, { property: 'og:image', content: photoUrl }, { name: 'description', content: album.subtitle || '' }];
   metaTags.forEach(function(tag) { var meta; if (tag.property) { meta = document.querySelector('meta[property="' + tag.property + '"]'); if (!meta) { meta = document.createElement('meta'); meta.setAttribute('property', tag.property); } } else { meta = document.querySelector('meta[name="' + tag.name + '"]'); if (!meta) { meta = document.createElement('meta'); meta.setAttribute('name', tag.name); } } meta.setAttribute('content', tag.content); if (!meta.parentNode) document.head.appendChild(meta); });
-  
-  // Atualizar favicon
   updateFavicon(photoUrl);
 }
 
@@ -234,9 +203,7 @@ function ClientApp(props) {
   var _useState18 = useState(false), videoEnded = _useState18[0], setVideoEnded = _useState18[1];
   var _useState19 = useState(false), videoError = _useState19[0], setVideoError = _useState19[1];
   var _useState20 = useState(true), showVideoOverlay = _useState20[0], setShowVideoOverlay = _useState20[1];
-  var _useStateVideoStalled = useState(false), videoStalled = _useStateVideoStalled[0], setVideoStalled = _useStateVideoStalled[1];
   var videoRef = useRef(null);
-  var videoRetryTimer = useRef(null);
   var galleryRef = useRef(null);
   var _useState21 = useState(12), visiblePhotos = _useState21[0], setVisiblePhotos = _useState21[1];
   var _useState22 = useState(false), isLoadingMore = _useState22[0], setIsLoadingMore = _useState22[1];
@@ -265,23 +232,84 @@ function ClientApp(props) {
     }
   }, [isAuthenticated, album.introVideo, videoEnded, videoError, albumExpired]);
   
+  // Gerenciar eventos do vídeo - overlay só aparece quando realmente necessário
   useEffect(function() {
     if (showIntroVideo && videoRef.current) {
       var video = videoRef.current;
-      var handleStalled = function() { setVideoStalled(true); if (videoRetryTimer.current) clearTimeout(videoRetryTimer.current); videoRetryTimer.current = setTimeout(function() { if (video && video.paused && !video.ended) { video.load(); video.play().catch(function() {}); setVideoStalled(false); } }, 2000); };
-      var handlePlaying = function() { setVideoStalled(false); setShowVideoOverlay(false); };
-      var handleWaiting = function() { setVideoStalled(true); };
-      var handleCanPlay = function() { setVideoStalled(false); setShowVideoOverlay(false); };
-      video.addEventListener('stalled', handleStalled);
+      var stallTimeout = null;
+      var hasStartedPlaying = false;
+      
+      var handlePlaying = function() {
+        hasStartedPlaying = true;
+        setShowVideoOverlay(false);
+      };
+      
+      var handleWaiting = function() {
+        // Só mostra overlay de buffering se o vídeo já começou a tocar
+        if (hasStartedPlaying) {
+          // Pequeno delay para evitar flickering
+          if (stallTimeout) clearTimeout(stallTimeout);
+          stallTimeout = setTimeout(function() {
+            if (video.readyState < 3) {
+              setShowVideoOverlay(true);
+            }
+          }, 500);
+        }
+      };
+      
+      var handleCanPlay = function() {
+        if (stallTimeout) clearTimeout(stallTimeout);
+        if (hasStartedPlaying) {
+          setShowVideoOverlay(false);
+        }
+      };
+      
+      var handleStalled = function() {
+        if (hasStartedPlaying) {
+          if (stallTimeout) clearTimeout(stallTimeout);
+          stallTimeout = setTimeout(function() {
+            setShowVideoOverlay(true);
+          }, 1000);
+        }
+      };
+      
+      var handleCanPlayThrough = function() {
+        // Vídeo carregou o suficiente - remove overlay
+        if (stallTimeout) clearTimeout(stallTimeout);
+        setShowVideoOverlay(false);
+      };
+      
       video.addEventListener('playing', handlePlaying);
       video.addEventListener('waiting', handleWaiting);
       video.addEventListener('canplay', handleCanPlay);
-      video.play().catch(function() { setShowVideoOverlay(true); });
-      return function() { video.removeEventListener('stalled', handleStalled); video.removeEventListener('playing', handlePlaying); video.removeEventListener('waiting', handleWaiting); video.removeEventListener('canplay', handleCanPlay); if (videoRetryTimer.current) clearTimeout(videoRetryTimer.current); };
+      video.addEventListener('stalled', handleStalled);
+      video.addEventListener('canplaythrough', handleCanPlayThrough);
+      
+      video.play().catch(function() {
+        setShowVideoOverlay(true);
+      });
+      
+      return function() {
+        video.removeEventListener('playing', handlePlaying);
+        video.removeEventListener('waiting', handleWaiting);
+        video.removeEventListener('canplay', handleCanPlay);
+        video.removeEventListener('stalled', handleStalled);
+        video.removeEventListener('canplaythrough', handleCanPlayThrough);
+        if (stallTimeout) clearTimeout(stallTimeout);
+      };
     }
   }, [showIntroVideo]);
   
-  useEffect(function() { if (showIntroVideo && showVideoOverlay) { var timer = setTimeout(function() { setShowVideoOverlay(false); }, 5000); return function() { clearTimeout(timer); }; } }, [showIntroVideo, showVideoOverlay]);
+  // Overlay inicial some após 5 segundos no máximo
+  useEffect(function() {
+    if (showIntroVideo && showVideoOverlay) {
+      var timer = setTimeout(function() { 
+        setShowVideoOverlay(false); 
+      }, 5000);
+      return function() { clearTimeout(timer); };
+    }
+  }, [showIntroVideo, showVideoOverlay]);
+  
   useEffect(function() { if (showIntroVideo) { var t = setTimeout(function() { handleVideoEnded(); }, 600000); return function() { clearTimeout(t); }; } }, [showIntroVideo]);
   
   useEffect(function() {
@@ -317,7 +345,7 @@ function ClientApp(props) {
   var handleWhatsAppContact = function() { if (album.whatsappNumber?.trim()) { var p = album.whatsappNumber.replace(/\D/g, ''); if (p.indexOf('55') !== 0) p = '55' + p; window.open('https://wa.me/' + p + '?text=' + encodeURIComponent('Ola! Vi seu album "' + album.clientName + '" e gostaria de saber mais informacoes.'), '_blank'); } };
   var handleStoryNavigation = function(d) { if (d === 'prev' && currentStoryIdx > 0) { setCurrentStoryIdx(function(v) { return v - 1; }); setStoryProgress(0); storyStartTimeRef.current = Date.now(); } else if (d === 'next') { if (currentStoryIdx < album.photos.length - 1) { setCurrentStoryIdx(function(v) { return v + 1; }); setStoryProgress(0); storyStartTimeRef.current = Date.now(); } else { setIsStoryPlaying(false); setActiveTab('gallery'); } } };
   var toggleMute = function(e) { e.stopPropagation(); setIsMuted(!isMuted); };
-  var handleVideoEnded = function() { setShowIntroVideo(false); setVideoEnded(true); setShowVideoOverlay(false); setVideoStalled(false); setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); };
+  var handleVideoEnded = function() { setShowIntroVideo(false); setVideoEnded(true); setShowVideoOverlay(false); setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); };
   var handleSkipVideo = function() { handleVideoEnded(); };
   var handleVideoError = function() { setVideoError(true); setShowIntroVideo(false); handleVideoEnded(); };
   var handleSharePhoto = function(photoUrl) { setSharePhotoUrl(photoUrl); setShowSharePopup(true); };
@@ -325,6 +353,7 @@ function ClientApp(props) {
   var handleShareCurrentStory = function() { if (album.photos && album.photos[currentStoryIdx]) { handleSharePhoto(album.photos[currentStoryIdx]); } };
   var hasWhatsApp = album.whatsappNumber?.trim();
 
+  // TELA DE VÍDEO INTRO - CORRIGIDA (overlay não fica sobre o vídeo)
   if (isAuthenticated && showIntroVideo && album.introVideo && !albumExpired) {
     var orientation = detectVideoOrientation(album.introVideo);
     var isVertical = orientation === 'vertical';
@@ -334,8 +363,19 @@ function ClientApp(props) {
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: '100%', height: '100%', position: 'relative' }}>
           <div style={{ width: isVertical ? 'min(100%, 420px)' : 'min(100%, 90vw)', maxHeight: '100dvh', aspectRatio: isVertical ? '9/16' : '16/9', position: 'relative', overflow: 'hidden', borderRadius: isVertical ? '20px' : '12px', background: '#000', boxShadow: '0 20px 50px rgba(0,0,0,.4)' }}>
             <video ref={videoRef} src={album.introVideo} autoPlay playsInline muted={false} preload="auto" onEnded={handleVideoEnded} onError={handleVideoError} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
-            {videoStalled && <div style={{ position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', color: 'white', padding: '10px 20px', borderRadius: '20px', fontSize: '0.8rem', zIndex: 20, display: 'flex', alignItems: 'center', gap: '8px' }}><Loader2 size={16} className="animate-spin" /><span>Carregando video...</span></div>}
-            {(showVideoOverlay || videoStalled) && <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', zIndex: 10, pointerEvents: 'none' }}><div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(212,175,55,0.25)', border: '3px solid rgba(212,175,55,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', animation: videoStalled ? 'none' : 'pulse-play 2s ease-in-out infinite' }}>{videoStalled ? <Loader2 size={38} className="animate-spin" color="rgba(212,175,55,0.95)" /> : <Play size={38} fill="rgba(212,175,55,0.95)" color="rgba(212,175,55,0.95)" style={{ marginLeft: '3px' }} />}</div><div style={{ textAlign: 'center' }}><p style={{ color: 'white', fontSize: '1.05rem', fontWeight: 600, margin: '0 0 6px 0' }}>{videoStalled ? 'Buffering...' : 'Aguarde o video esta carregando'}</p><p style={{ color: 'rgba(212,175,55,0.9)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>{videoStalled ? 'O video continuara em instantes' : 'o video sera iniciado automaticamente'}</p></div></div>}
+            
+            {/* Overlay APENAS quando o vídeo NÃO começou a tocar */}
+            {showVideoOverlay && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', zIndex: 10, pointerEvents: 'none' }}>
+                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'rgba(212,175,55,0.25)', border: '3px solid rgba(212,175,55,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '24px', animation: 'pulse-play 2s ease-in-out infinite' }}>
+                  <Play size={38} fill="rgba(212,175,55,0.95)" color="rgba(212,175,55,0.95)" style={{ marginLeft: '3px' }} />
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <p style={{ color: 'white', fontSize: '1.05rem', fontWeight: 600, margin: '0 0 6px 0' }}>Aguarde o video esta carregando</p>
+                  <p style={{ color: 'rgba(212,175,55,0.9)', fontSize: '0.85rem', fontWeight: 500, margin: 0 }}>o video sera iniciado automaticamente</p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <button onClick={function(e) { e.stopPropagation(); handleSkipVideo(); }} style={{ position: 'fixed', bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', color: 'white', padding: '0.7rem 1.3rem', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}><SkipForward size={16} /> Pular Video</button>
