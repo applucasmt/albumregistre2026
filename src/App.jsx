@@ -62,7 +62,15 @@ function uploadVideoToCloudinary(file, albumId) {
 
 async function uploadToCloudinary(file, albumId, resourceType) {
   resourceType = resourceType || 'image';
-  if (typeof file === 'string' && file.startsWith('http') && file.indexOf('cloudinary') !== -1) return file;
+  
+  // CORREÇÃO: Verifica se já é uma URL válida (não é data URI nem blob) para não reenviar e normaliza o HTTPS
+  if (typeof file === 'string' && !file.startsWith('data:') && !file.startsWith('blob:')) {
+    if (file.includes('cloudinary') && !file.startsWith('http')) {
+      return 'https://' + file;
+    }
+    return file;
+  }
+  
   if (resourceType === 'video' && file instanceof File) { return await uploadVideoToCloudinary(file, albumId); }
   try {
     const formData = new FormData();
@@ -790,6 +798,7 @@ function AdminEditor(props) {
   var _useState43 = useState(0), upr = _useState43[0], setUpr = _useState43[1];
   var _useState44 = useState(false), isSaving = _useState44[0], setIsSaving = _useState44[1];
   var _useState45 = useState(''), uploadStatus = _useState45[0], setUploadStatus = _useState45[1];
+  
   var f2b = function(f) { return new Promise(function(r, j) { var rd = new FileReader(); rd.readAsDataURL(f); rd.onload = function() { r(rd.result); }; rd.onerror = j; }); };
   var ri = function(b64, mw) { mw = mw || 1200; return new Promise(function(r) { var img = new Image(); img.onload = function() { var c = document.createElement('canvas'); var w = img.width, h = img.height; if (w > mw) { h = (h * mw) / w; w = mw; } c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); r(c.toDataURL('image/jpeg', 0.8)); }; img.src = b64; }); };
   var hfu = async function(e) { var fs = Array.from(e.target.files); if (!fs.length) return; setIu(true); var np = up.slice(); var p = 0; for (var i = 0; i < fs.length; i++) { var f = fs[i]; if (f.type.startsWith('image/')) { try { var b = await f2b(f); b = await ri(b, 1200); np.push(b); } catch (_) {} } p++; setUpr(Math.round((p / fs.length) * 100)); } setUp(np); setIu(false); setUpr(0); e.target.value = ''; };
@@ -800,7 +809,139 @@ function AdminEditor(props) {
   var hrv = function() { setVideoFile(null); setVideoPreview(''); };
   var hrm = function() { setSmf(null); setSmp(''); setMst(0); setMet(null); setAd(null); };
   var hrp = function(i) { var np = up.slice(); np.splice(i, 1); setUp(np); if (sf.indexOf(i) !== -1) setSf(sf.filter(function(x) { return x !== i; })); if (sp === up[i]) setSp(''); };
-  var hs = async function(e) { e.preventDefault(); if (!formData.clientName) { alert("Preencha o Nome do Cliente."); return; } if (!formData.googleDriveUrl) { alert("Insira o link do Google Drive."); return; } if (!up.length) { alert("Selecione pelo menos uma foto."); return; } setIsSaving(true); setUpr(0); setUploadStatus('Iniciando...'); try { var aid = formData.shortId, urls = []; var total = up.length + (smf ? 1 : 0) + (videoFile ? 1 : 0) + (ll && ll.indexOf('http') !== 0 ? 1 : 0) + (lb || []).length; var step = 0; for (var i = 0; i < up.length; i++) { var ph = up[i]; if (ph.startsWith('http')) { urls.push(ph); step++; continue; } var u = await uploadToCloudinary(ph, aid, 'image'); if (!u) throw new Error("Falha ao enviar imagem."); urls.push(u); step++; setUpr(Math.round((step / total) * 100)); setUploadStatus('Enviando fotos...'); } var fM = smp; if (smf) { setUploadStatus('Enviando musica...'); fM = await uploadToCloudinary(smf, aid, 'video'); if (!fM) throw new Error("Falha ao enviar musica."); step++; setUpr(Math.round((step / total) * 100)); } var fVideo = videoPreview; if (videoFile) { setUploadStatus('Enviando video...'); setUpr(Math.round((step / total) * 100)); fVideo = await uploadToCloudinary(videoFile, aid, 'video'); if (!fVideo) throw new Error("Falha ao enviar video."); step++; setUpr(Math.round((step / total) * 100)); } var fL = ll; if (ll && ll.indexOf('http') !== 0) { fL = await uploadToCloudinary(ll, aid, 'image'); if (!fL) throw new Error("Falha ao enviar logo."); step++; } var fBgs = []; for (var j = 0; j < (lb || []).length; j++) { var bg = lb[j]; if (bg.startsWith('http')) fBgs.push(bg); else { var ub = await uploadToCloudinary(bg, aid, 'image'); if (!ub) throw new Error("Falha ao enviar fundo."); fBgs.push(ub); } step++; } var uf = []; for (var k = 0; k < sf.length; k++) { var oi = sf[k], ni = urls.findIndex(function(u) { return u === up[oi]; }); if (ni !== -1) uf.push(ni); } var fP = sp; if (sp && sp.indexOf('http') !== 0) { var pi = urls.findIndex(function(u) { return u === sp; }); fP = pi !== -1 ? urls[pi] : urls[0]; } else if (!fP && urls.length) fP = urls[0]; var fd = Object.assign({}, formData, { photos: urls, featuredPhotos: uf, profileImage: fP, loaderLogo: fL, loaderBackgrounds: fBgs, storyMusic: fM || '', musicStartTime: mst || 0, musicEndTime: met || ad || null, introVideo: fVideo || '', expiryDate: formData.expiryDate || '', updatedAt: new Date().toISOString() }); setUpr(95); setUploadStatus('Salvando na planilha...'); if (await saveAlbumToSheets(fd)) { setUpr(100); setUploadStatus('✅ Concluído!'); setTimeout(function() { onSave(fd); alert('Album salvo!'); }, 500); } else throw new Error("Falha ao salvar."); } catch (er) { alert('Erro: ' + er.message); } finally { setIsSaving(false); setUpr(0); setUploadStatus(''); } };
+  
+  // CORREÇÃO: Lógica de verificação do que é arquivo novo ("data:" ou "blob:") ou arquivo já existente.
+  var hs = async function(e) { 
+    e.preventDefault(); 
+    if (!formData.clientName) { alert("Preencha o Nome do Cliente."); return; } 
+    if (!formData.googleDriveUrl) { alert("Insira o link do Google Drive."); return; } 
+    if (!up.length) { alert("Selecione pelo menos uma foto."); return; } 
+    
+    setIsSaving(true); 
+    setUpr(0); 
+    setUploadStatus('Iniciando...'); 
+    
+    try { 
+      var aid = formData.shortId, urls = []; 
+      var total = up.length + (smf ? 1 : 0) + (videoFile ? 1 : 0) + (ll ? 1 : 0) + (lb || []).length; 
+      var step = 0; 
+      
+      for (var i = 0; i < up.length; i++) { 
+        var ph = up[i]; 
+        // Não envia se já for uma imagem que não tenha "data:" no início
+        if (typeof ph === 'string' && !ph.startsWith('data:') && !ph.startsWith('blob:')) { 
+          var finalUrl = ph.startsWith('http') ? ph : (ph.includes('cloudinary') ? 'https://' + ph : ph);
+          urls.push(finalUrl); 
+          step++; 
+          setUpr(Math.round((step / total) * 100)); 
+          continue; 
+        } 
+        setUploadStatus('Enviando fotos (' + (i+1) + '/' + up.length + ')...');
+        var u = await uploadToCloudinary(ph, aid, 'image'); 
+        if (!u) throw new Error("Falha ao enviar imagem."); 
+        urls.push(u); 
+        step++; 
+        setUpr(Math.round((step / total) * 100)); 
+      } 
+      
+      var fM = smp; 
+      if (smf) { 
+        setUploadStatus('Enviando musica...'); 
+        fM = await uploadToCloudinary(smf, aid, 'video'); 
+        if (!fM) throw new Error("Falha ao enviar musica."); 
+        step++; 
+        setUpr(Math.round((step / total) * 100)); 
+      } else {
+        if (typeof fM === 'string' && !fM.startsWith('http') && !fM.startsWith('blob:') && fM.includes('cloudinary')) {
+          fM = 'https://' + fM;
+        }
+        if (fM) step++;
+      }
+      
+      var fVideo = videoPreview; 
+      if (videoFile) { 
+        setUploadStatus('Enviando video...'); 
+        fVideo = await uploadToCloudinary(videoFile, aid, 'video'); 
+        if (!fVideo) throw new Error("Falha ao enviar video."); 
+        step++; 
+        setUpr(Math.round((step / total) * 100)); 
+      } else {
+        if (typeof fVideo === 'string' && !fVideo.startsWith('http') && !fVideo.startsWith('blob:') && fVideo.includes('cloudinary')) {
+          fVideo = 'https://' + fVideo;
+        }
+        if (fVideo) step++;
+      }
+      
+      var fL = ll; 
+      if (typeof ll === 'string' && !ll.startsWith('data:') && !ll.startsWith('blob:')) {
+        if (fL.includes('cloudinary') && !fL.startsWith('http')) fL = 'https://' + fL;
+        if (fL) step++;
+      } else if (ll) { 
+        setUploadStatus('Enviando logo...');
+        fL = await uploadToCloudinary(ll, aid, 'image'); 
+        if (!fL) throw new Error("Falha ao enviar logo."); 
+        step++; 
+        setUpr(Math.round((step / total) * 100)); 
+      } 
+      
+      var fBgs = []; 
+      for (var j = 0; j < (lb || []).length; j++) { 
+        var bg = lb[j]; 
+        if (typeof bg === 'string' && !bg.startsWith('data:') && !bg.startsWith('blob:')) { 
+          fBgs.push(bg.startsWith('http') ? bg : (bg.includes('cloudinary') ? 'https://' + bg : bg)); 
+        } else { 
+          setUploadStatus('Enviando fundos...');
+          var ub = await uploadToCloudinary(bg, aid, 'image'); 
+          if (!ub) throw new Error("Falha ao enviar fundo."); 
+          fBgs.push(ub); 
+        } 
+        step++; 
+        setUpr(Math.round((step / total) * 100)); 
+      } 
+      
+      var uf = sf.slice(); 
+      
+      var fP = '';
+      if (sp) {
+        var pi = up.findIndex(function(u) { return u === sp; });
+        if (pi !== -1) fP = urls[pi];
+        else fP = urls[0];
+      } else if (urls.length) {
+        fP = urls[0];
+      }
+      
+      var fd = Object.assign({}, formData, { 
+        photos: urls, 
+        featuredPhotos: uf, 
+        profileImage: fP, 
+        loaderLogo: fL || '', 
+        loaderBackgrounds: fBgs, 
+        storyMusic: fM || '', 
+        musicStartTime: mst || 0, 
+        musicEndTime: met || ad || null, 
+        introVideo: fVideo || '', 
+        expiryDate: formData.expiryDate || '', 
+        updatedAt: new Date().toISOString() 
+      }); 
+      
+      setUpr(95); 
+      setUploadStatus('Salvando na planilha...'); 
+      
+      if (await saveAlbumToSheets(fd)) { 
+        setUpr(100); 
+        setUploadStatus('✅ Concluído!'); 
+        setTimeout(function() { onSave(fd); alert('Album salvo!'); }, 500); 
+      } else {
+        throw new Error("Falha ao salvar na planilha.");
+      }
+    } catch (er) { 
+      alert('Erro: ' + er.message); 
+    } finally { 
+      setIsSaving(false); 
+      setUpr(0); 
+      setUploadStatus(''); 
+    } 
+  };
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] py-6 sm:py-8 px-3 sm:px-4">
