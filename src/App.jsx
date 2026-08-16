@@ -10,7 +10,7 @@ import {
 
 const CLOUDINARY_CONFIG = {
   cloudName: 'gyzeubzm',
-  uploadPreset: 'registre_album',
+  uploadPreset: 'registre_album', // Único preset para tudo
   folder: 'registre'
 };
 
@@ -40,7 +40,7 @@ function detectVideoOrientation(url) {
   return 'vertical';
 }
 
-// Função otimizada para upload de vídeo com transformações para melhor performance
+// UPLOAD DE VÍDEO - Usa o preset registre_album
 function uploadVideoToCloudinary(file, albumId) {
   return new Promise(function(resolve, reject) {
     var xhr = new XMLHttpRequest();
@@ -48,39 +48,94 @@ function uploadVideoToCloudinary(file, albumId) {
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
     formData.append('folder', CLOUDINARY_CONFIG.folder + '/' + albumId);
-    // Adicionar transformações para otimizar o vídeo
-    formData.append('transformation', JSON.stringify([
-      { quality: 'auto:good', fetch_format: 'auto' },
-      { aspect_ratio: '9:16', crop: 'limit' }
-    ]));
     xhr.open('POST', 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/video/upload', true);
-    xhr.onload = function() { if (xhr.status >= 200 && xhr.status < 300) { var data = JSON.parse(xhr.responseText); resolve(data.secure_url); } else { reject(new Error('Erro no upload do video')); } };
+    xhr.onload = function() { 
+      if (xhr.status >= 200 && xhr.status < 300) { 
+        var data = JSON.parse(xhr.responseText); 
+        resolve(data.secure_url); 
+      } else { 
+        try {
+          var errorData = JSON.parse(xhr.responseText);
+          reject(new Error(errorData.error?.message || 'Erro no upload do video'));
+        } catch(e) {
+          reject(new Error('Erro no upload do video: ' + xhr.status));
+        }
+      } 
+    };
     xhr.onerror = function() { reject(new Error('Erro de rede ao enviar video')); };
+    xhr.send(formData);
+  });
+}
+
+// UPLOAD DE ÁUDIO - Usa o preset registre_album
+function uploadAudioToCloudinary(file, albumId) {
+  return new Promise(function(resolve, reject) {
+    var xhr = new XMLHttpRequest();
+    var formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
+    formData.append('folder', CLOUDINARY_CONFIG.folder + '/' + albumId);
+    xhr.open('POST', 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/video/upload', true);
+    xhr.onload = function() { 
+      if (xhr.status >= 200 && xhr.status < 300) { 
+        var data = JSON.parse(xhr.responseText); 
+        resolve(data.secure_url); 
+      } else { 
+        try {
+          var errorData = JSON.parse(xhr.responseText);
+          reject(new Error(errorData.error?.message || 'Erro no upload do audio'));
+        } catch(e) {
+          reject(new Error('Erro no upload do audio: ' + xhr.status));
+        }
+      } 
+    };
+    xhr.onerror = function() { reject(new Error('Erro de rede ao enviar audio')); };
     xhr.send(formData);
   });
 }
 
 async function uploadToCloudinary(file, albumId, resourceType) {
   resourceType = resourceType || 'image';
+  
+  // Se já é URL do Cloudinary, retornar
   if (typeof file === 'string' && file.startsWith('http') && file.indexOf('cloudinary') !== -1) return file;
-  if (resourceType === 'video' && file instanceof File) { return await uploadVideoToCloudinary(file, albumId); }
+  
+  // Upload de vídeo
+  if (resourceType === 'video' && file instanceof File) { 
+    return await uploadVideoToCloudinary(file, albumId); 
+  }
+  
+  // Upload de áudio (tratado como vídeo no Cloudinary)
+  if (resourceType === 'audio' && file instanceof File) {
+    return await uploadAudioToCloudinary(file, albumId);
+  }
+  
+  // Upload de imagem
   try {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
     formData.append('folder', CLOUDINARY_CONFIG.folder + '/' + albumId);
-    const response = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/' + resourceType + '/upload', { method: 'POST', body: formData });
-    if (!response.ok) { const error = await response.json(); throw new Error(error.error?.message || 'Erro no upload'); }
+    const response = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/image/upload', { 
+      method: 'POST', 
+      body: formData 
+    });
+    if (!response.ok) { 
+      const error = await response.json(); 
+      throw new Error(error.error?.message || 'Erro no upload da imagem'); 
+    }
     const data = await response.json();
     return data.secure_url;
-  } catch (error) { console.error('Erro no upload:', error); throw error; }
+  } catch (error) { 
+    console.error('Erro no upload da imagem:', error); 
+    throw error; 
+  }
 }
 
-// Função para gerar URL otimizada do vídeo no Cloudinary
+// Função para gerar URL otimizada do vídeo
 function getOptimizedVideoUrl(videoUrl) {
   if (!videoUrl || !videoUrl.includes('cloudinary')) return videoUrl;
-  // Substituir para usar formato otimizado
-  return videoUrl.replace('/upload/', '/upload/f_auto,q_auto/g_auto/');
+  return videoUrl.replace('/upload/', '/upload/f_auto,q_auto/');
 }
 
 function updateFavicon(photoUrl) {
@@ -231,7 +286,6 @@ function ClientApp(props) {
   var _useStateBuffer = useState(false), showBuffering = _useStateBuffer[0], setShowBuffering = _useStateBuffer[1];
   var bufferTimeoutRef = useRef(null);
   
-  // Usar URL otimizada do vídeo se disponível
   var optimizedVideoUrl = useMemo(function() {
     if (!album.introVideo) return null;
     return getOptimizedVideoUrl(album.introVideo);
@@ -254,7 +308,6 @@ function ClientApp(props) {
     }
   }, [isAuthenticated, album.introVideo, videoEnded, videoError, albumExpired]);
   
-  // Gerenciar eventos do vídeo com URL otimizada
   useEffect(function() {
     if (showIntroVideo && videoRef.current) {
       var video = videoRef.current;
@@ -397,7 +450,6 @@ function ClientApp(props) {
   var handleShareCurrentStory = function() { if (album.photos && album.photos[currentStoryIdx]) { handleSharePhoto(album.photos[currentStoryIdx]); } };
   var hasWhatsApp = album.whatsappNumber?.trim();
 
-  // TELA DE VÍDEO INTRO - com URL otimizada
   if (isAuthenticated && showIntroVideo && album.introVideo && !albumExpired) {
     var orientation = detectVideoOrientation(album.introVideo);
     var isVertical = orientation === 'vertical';
@@ -558,26 +610,20 @@ function AlbumLoader(props) {
           setAlbum(d); 
           setStatus('preloading'); 
           
-          // Coletar todas as URLs para pré-carregamento
           var urls = [d.loaderLogo, d.profileImage].concat(d.loaderBackgrounds||[]).concat(d.photos||[]).filter(Boolean);
-          
-          // Adicionar vídeo para pré-carregamento se existir
           var videoUrl = d.introVideo;
           var totalItems = urls.length + (videoUrl ? 1 : 0);
           var loadedItems = 0;
           
-          // Função para atualizar progresso
           var updateProgress = function() {
             loadedItems++;
             var progress = Math.round((loadedItems / totalItems) * 100);
             setAp(progress);
-            // Atualizar também o progresso do vídeo separadamente
             if (videoUrl && loadedItems >= urls.length) {
               setVideoProgress(Math.min(100, Math.round(((loadedItems - urls.length) / 1) * 100)));
             }
           };
           
-          // Pré-carregar imagens
           urls.forEach(function(u) { 
             var img = new Image(); 
             img.src = u; 
@@ -589,12 +635,9 @@ function AlbumLoader(props) {
             }; 
           });
           
-          // PRÉ-CARREGAR O VÍDEO EM BACKGROUND
           if (videoUrl) {
-            // Versão otimizada do vídeo
             var optimizedVideo = getOptimizedVideoUrl(videoUrl);
             
-            // Método 1: Usar link preload
             var preloadLink = document.createElement('link');
             preloadLink.rel = 'preload';
             preloadLink.as = 'video';
@@ -602,7 +645,6 @@ function AlbumLoader(props) {
             preloadLink.type = 'video/mp4';
             document.head.appendChild(preloadLink);
             
-            // Método 2: Criar elemento de vídeo oculto para pré-carregar
             var preloadVideo = document.createElement('video');
             preloadVideo.src = optimizedVideo;
             preloadVideo.preload = 'auto';
@@ -612,10 +654,8 @@ function AlbumLoader(props) {
             document.body.appendChild(preloadVideo);
             videoPreloadRef.current = preloadVideo;
             
-            // Carregar o vídeo
             preloadVideo.load();
             
-            // Monitorar progresso do carregamento do vídeo
             var videoLoaded = false;
             
             preloadVideo.addEventListener('loadeddata', function() {
@@ -623,7 +663,6 @@ function AlbumLoader(props) {
                 videoLoaded = true;
                 setVideoPreloaded(true);
                 updateProgress();
-                // Remover o vídeo oculto após carregar
                 setTimeout(function() {
                   if (videoPreloadRef.current) {
                     document.body.removeChild(videoPreloadRef.current);
@@ -634,14 +673,12 @@ function AlbumLoader(props) {
             });
             
             preloadVideo.addEventListener('error', function() {
-              // Em caso de erro, ainda assim contar como carregado para não travar
               if (!videoLoaded) {
                 videoLoaded = true;
                 updateProgress();
               }
             });
             
-            // Timeout para não ficar preso no carregamento
             setTimeout(function() {
               if (!videoLoaded) {
                 videoLoaded = true;
@@ -651,7 +688,7 @@ function AlbumLoader(props) {
                   videoPreloadRef.current = null;
                 }
               }
-            }, 30000); // 30 segundos de timeout
+            }, 30000);
           }
           
           updateMetaTags(d); 
@@ -664,7 +701,6 @@ function AlbumLoader(props) {
     })(); 
     
     return function() {
-      // Cleanup
       if (videoPreloadRef.current) {
         try {
           document.body.removeChild(videoPreloadRef.current);
@@ -694,7 +730,6 @@ function AlbumLoader(props) {
     return function(){ clearInterval(i); }; 
   }, [status, ap]);
 
-  // Mostrar indicador de pré-carregamento do vídeo durante o loading
   var isVideoLoading = album?.introVideo && !videoPreloaded && ap < 100;
   
   if (status==='error') return <div className="h-screen bg-black text-white flex flex-col items-center justify-center"><X size={48} className="text-red-500 mb-4"/><h2 className="text-xl">Album nao encontrado</h2></div>;
@@ -718,7 +753,6 @@ function AlbumLoader(props) {
           <h2 className="text-2xl font-bold tracking-tight text-white mb-1">{album?.clientName || 'Conectando...'}</h2>
           <p className="text-gray-400 text-sm mb-8">{album?.subtitle || 'Preparando experiencia visual...'}</p>
           
-          {/* Indicador de progresso com status do vídeo */}
           <div className="w-full max-w-xs space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-xs text-[#d4af37] tracking-widest uppercase font-bold animate-pulse">
@@ -733,7 +767,6 @@ function AlbumLoader(props) {
               }
             </div>
             
-            {/* Indicador de pré-carregamento do vídeo */}
             {album?.introVideo && status === 'preloading' && (
               <div className="flex items-center justify-center gap-2 mt-2">
                 <div className="flex gap-1">
@@ -800,7 +833,123 @@ function AdminEditor(props) {
   var hrv = function() { setVideoFile(null); setVideoPreview(''); };
   var hrm = function() { setSmf(null); setSmp(''); setMst(0); setMet(null); setAd(null); };
   var hrp = function(i) { var np = up.slice(); np.splice(i, 1); setUp(np); if (sf.indexOf(i) !== -1) setSf(sf.filter(function(x) { return x !== i; })); if (sp === up[i]) setSp(''); };
-  var hs = async function(e) { e.preventDefault(); if (!formData.clientName) { alert("Preencha o Nome do Cliente."); return; } if (!formData.googleDriveUrl) { alert("Insira o link do Google Drive."); return; } if (!up.length) { alert("Selecione pelo menos uma foto."); return; } setIsSaving(true); setUpr(0); setUploadStatus('Iniciando...'); try { var aid = formData.shortId, urls = []; var total = up.length + (smf ? 1 : 0) + (videoFile ? 1 : 0) + (ll && ll.indexOf('http') !== 0 ? 1 : 0) + (lb || []).length; var step = 0; for (var i = 0; i < up.length; i++) { var ph = up[i]; if (ph.startsWith('http')) { urls.push(ph); step++; continue; } var u = await uploadToCloudinary(ph, aid, 'image'); if (!u) throw new Error("Falha ao enviar imagem."); urls.push(u); step++; setUpr(Math.round((step / total) * 100)); setUploadStatus('Enviando fotos...'); } var fM = smp; if (smf) { setUploadStatus('Enviando musica...'); fM = await uploadToCloudinary(smf, aid, 'video'); if (!fM) throw new Error("Falha ao enviar musica."); step++; setUpr(Math.round((step / total) * 100)); } var fVideo = videoPreview; if (videoFile) { setUploadStatus('Enviando video...'); setUpr(Math.round((step / total) * 100)); fVideo = await uploadToCloudinary(videoFile, aid, 'video'); if (!fVideo) throw new Error("Falha ao enviar video."); step++; setUpr(Math.round((step / total) * 100)); } var fL = ll; if (ll && ll.indexOf('http') !== 0) { fL = await uploadToCloudinary(ll, aid, 'image'); if (!fL) throw new Error("Falha ao enviar logo."); step++; } var fBgs = []; for (var j = 0; j < (lb || []).length; j++) { var bg = lb[j]; if (bg.startsWith('http')) fBgs.push(bg); else { var ub = await uploadToCloudinary(bg, aid, 'image'); if (!ub) throw new Error("Falha ao enviar fundo."); fBgs.push(ub); } step++; } var uf = []; for (var k = 0; k < sf.length; k++) { var oi = sf[k], ni = urls.findIndex(function(u) { return u === up[oi]; }); if (ni !== -1) uf.push(ni); } var fP = sp; if (sp && sp.indexOf('http') !== 0) { var pi = urls.findIndex(function(u) { return u === sp; }); fP = pi !== -1 ? urls[pi] : urls[0]; } else if (!fP && urls.length) fP = urls[0]; var fd = Object.assign({}, formData, { photos: urls, featuredPhotos: uf, profileImage: fP, loaderLogo: fL, loaderBackgrounds: fBgs, storyMusic: fM || '', musicStartTime: mst || 0, musicEndTime: met || ad || null, introVideo: fVideo || '', expiryDate: formData.expiryDate || '', updatedAt: new Date().toISOString() }); setUpr(95); setUploadStatus('Salvando na planilha...'); if (await saveAlbumToSheets(fd)) { setUpr(100); setUploadStatus('✅ Concluído!'); setTimeout(function() { onSave(fd); alert('Album salvo!'); }, 500); } else throw new Error("Falha ao salvar."); } catch (er) { alert('Erro: ' + er.message); } finally { setIsSaving(false); setUpr(0); setUploadStatus(''); } };
+  var hs = async function(e) { 
+    e.preventDefault(); 
+    if (!formData.clientName) { alert("Preencha o Nome do Cliente."); return; } 
+    if (!formData.googleDriveUrl) { alert("Insira o link do Google Drive."); return; } 
+    if (!up.length) { alert("Selecione pelo menos uma foto."); return; } 
+    setIsSaving(true); 
+    setUpr(0); 
+    setUploadStatus('Iniciando...'); 
+    try { 
+      var aid = formData.shortId, urls = []; 
+      var total = up.length + (smf ? 1 : 0) + (videoFile ? 1 : 0) + (ll && ll.indexOf('http') !== 0 ? 1 : 0) + (lb || []).length; 
+      var step = 0; 
+      
+      // Upload das imagens
+      for (var i = 0; i < up.length; i++) { 
+        var ph = up[i]; 
+        if (ph.startsWith('http')) { 
+          urls.push(ph); 
+          step++; 
+          continue; 
+        } 
+        var u = await uploadToCloudinary(ph, aid, 'image'); 
+        if (!u) throw new Error("Falha ao enviar imagem."); 
+        urls.push(u); 
+        step++; 
+        setUpr(Math.round((step / total) * 100)); 
+        setUploadStatus('Enviando fotos...'); 
+      } 
+      
+      // Upload da música (áudio)
+      var fM = smp; 
+      if (smf) { 
+        setUploadStatus('Enviando musica...'); 
+        fM = await uploadToCloudinary(smf, aid, 'audio'); 
+        if (!fM) throw new Error("Falha ao enviar musica."); 
+        step++; 
+        setUpr(Math.round((step / total) * 100)); 
+      } 
+      
+      // Upload do vídeo
+      var fVideo = videoPreview; 
+      if (videoFile) { 
+        setUploadStatus('Enviando video...'); 
+        setUpr(Math.round((step / total) * 100)); 
+        fVideo = await uploadToCloudinary(videoFile, aid, 'video'); 
+        if (!fVideo) throw new Error("Falha ao enviar video."); 
+        step++; 
+        setUpr(Math.round((step / total) * 100)); 
+      } 
+      
+      // Upload da logo
+      var fL = ll; 
+      if (ll && ll.indexOf('http') !== 0) { 
+        fL = await uploadToCloudinary(ll, aid, 'image'); 
+        if (!fL) throw new Error("Falha ao enviar logo."); 
+        step++; 
+      } 
+      
+      // Upload dos fundos
+      var fBgs = []; 
+      for (var j = 0; j < (lb || []).length; j++) { 
+        var bg = lb[j]; 
+        if (bg.startsWith('http')) fBgs.push(bg); 
+        else { 
+          var ub = await uploadToCloudinary(bg, aid, 'image'); 
+          if (!ub) throw new Error("Falha ao enviar fundo."); 
+          fBgs.push(ub); 
+        } 
+        step++; 
+      } 
+      
+      // Fotos em destaque
+      var uf = []; 
+      for (var k = 0; k < sf.length; k++) { 
+        var oi = sf[k], ni = urls.findIndex(function(u) { return u === up[oi]; }); 
+        if (ni !== -1) uf.push(ni); 
+      } 
+      
+      // Foto de perfil
+      var fP = sp; 
+      if (sp && sp.indexOf('http') !== 0) { 
+        var pi = urls.findIndex(function(u) { return u === sp; }); 
+        fP = pi !== -1 ? urls[pi] : urls[0]; 
+      } else if (!fP && urls.length) fP = urls[0]; 
+      
+      var fd = Object.assign({}, formData, { 
+        photos: urls, 
+        featuredPhotos: uf, 
+        profileImage: fP, 
+        loaderLogo: fL, 
+        loaderBackgrounds: fBgs, 
+        storyMusic: fM || '', 
+        musicStartTime: mst || 0, 
+        musicEndTime: met || ad || null, 
+        introVideo: fVideo || '', 
+        expiryDate: formData.expiryDate || '', 
+        updatedAt: new Date().toISOString() 
+      }); 
+      
+      setUpr(95); 
+      setUploadStatus('Salvando na planilha...'); 
+      if (await saveAlbumToSheets(fd)) { 
+        setUpr(100); 
+        setUploadStatus('✅ Concluído!'); 
+        setTimeout(function() { 
+          onSave(fd); 
+          alert('Album salvo!'); 
+        }, 500); 
+      } else throw new Error("Falha ao salvar."); 
+    } catch (er) { 
+      alert('Erro: ' + er.message); 
+    } finally { 
+      setIsSaving(false); 
+      setUpr(0); 
+      setUploadStatus(''); 
+    } 
+  };
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] py-6 sm:py-8 px-3 sm:px-4">
