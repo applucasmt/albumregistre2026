@@ -14,7 +14,7 @@ const CLOUDINARY_CONFIG = {
   folder: 'registre'
 };
 
-const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbz-khu3LzY-Dv0cpOrX20UHqf2m9yv1A6BhSI9X8gvF38Zp6-auu4Esm5xC_OrYsGaO7Q/exec';
+const SHEETS_API_URL = 'https://script.google.com/macros/s/AKfycbyYLxM6wufpvZQ4G3c1v1P6rhr3W8_oRL1khbpkPYgVpa1MkqyPZ8So4UxH6yaOapBdeg/exec';
 
 const ADMIN_CREDENTIALS = {
   username: 'registre',
