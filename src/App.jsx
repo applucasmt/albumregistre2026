@@ -5,12 +5,12 @@ import {
   Pause, Play, Image as ImageIcon, CheckCircle, X, Loader2,
   Save, FolderUp, MessageCircle, Settings, FileText, Upload, Music, Volume2, VolumeX,
   Video, SkipForward, Scissors, Clock, AlertTriangle, Calendar,
-  Share2, LogIn, LogOut, User
+  Share2, LogIn, LogOut, User, Mail
 } from 'lucide-react';
 
 const CLOUDINARY_CONFIG = {
   cloudName: 'gyzeubzm',
-  uploadPreset: 'registre_album', // Único preset para tudo
+  uploadPreset: 'registre_album',
   folder: 'registre'
 };
 
@@ -40,7 +40,6 @@ function detectVideoOrientation(url) {
   return 'vertical';
 }
 
-// UPLOAD DE VÍDEO - Usa o preset registre_album
 function uploadVideoToCloudinary(file, albumId) {
   return new Promise(function(resolve, reject) {
     var xhr = new XMLHttpRequest();
@@ -67,7 +66,6 @@ function uploadVideoToCloudinary(file, albumId) {
   });
 }
 
-// UPLOAD DE ÁUDIO - Usa o preset registre_album
 function uploadAudioToCloudinary(file, albumId) {
   return new Promise(function(resolve, reject) {
     var xhr = new XMLHttpRequest();
@@ -96,21 +94,9 @@ function uploadAudioToCloudinary(file, albumId) {
 
 async function uploadToCloudinary(file, albumId, resourceType) {
   resourceType = resourceType || 'image';
-  
-  // Se já é URL do Cloudinary, retornar
   if (typeof file === 'string' && file.startsWith('http') && file.indexOf('cloudinary') !== -1) return file;
-  
-  // Upload de vídeo
-  if (resourceType === 'video' && file instanceof File) { 
-    return await uploadVideoToCloudinary(file, albumId); 
-  }
-  
-  // Upload de áudio (tratado como vídeo no Cloudinary)
-  if (resourceType === 'audio' && file instanceof File) {
-    return await uploadAudioToCloudinary(file, albumId);
-  }
-  
-  // Upload de imagem
+  if (resourceType === 'video' && file instanceof File) { return await uploadVideoToCloudinary(file, albumId); }
+  if (resourceType === 'audio' && file instanceof File) { return await uploadAudioToCloudinary(file, albumId); }
   try {
     const formData = new FormData();
     formData.append('file', file);
@@ -132,7 +118,6 @@ async function uploadToCloudinary(file, albumId, resourceType) {
   }
 }
 
-// Função para gerar URL otimizada do vídeo
 function getOptimizedVideoUrl(videoUrl) {
   if (!videoUrl || !videoUrl.includes('cloudinary')) return videoUrl;
   return videoUrl.replace('/upload/', '/upload/f_auto,q_auto/');
@@ -167,7 +152,19 @@ const loadAlbumFromSheets = async function(shortId) { try { const response = awa
 const loadAllAlbumsFromSheets = async function() { try { const response = await fetch(SHEETS_API_URL); const data = await response.json(); return data.success && data.albums ? data.albums : {}; } catch (e) { return {}; } };
 const generateShortId = function() { return Math.random().toString(36).substring(2, 8); };
 
-function isAlbumExpired(album) { if (!album) return false; if (album._isExpired === true) return true; if (album._isExpired === false) return false; if (album.expiryDate) { var now = new Date(); var expiry = new Date(album.expiryDate); return now > expiry; } return false; }
+const sendEmailFromSheets = async function(album) { 
+  try { 
+    const response = await fetch(SHEETS_API_URL, { 
+      method: 'POST', 
+      mode: 'cors', 
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
+      body: JSON.stringify({ action: 'send_email', id: album.shortId, album: album, baseUrl: window.location.origin }) 
+    }); 
+    return (await response.json()).success; 
+  } catch (e) { return false; } 
+};
+
+function isAlbumExpired(album) { if (!album) return false; if (album._isExpired === true || album._assetsDeleted === true) return true; if (album.expiryDate) { var now = new Date(); var expiry = new Date(album.expiryDate); return now > expiry; } return false; }
 function formatExpiryDate(album) { var dateStr = album._expiryDate || album.expiryDate; if (!dateStr) return null; try { var d = new Date(dateStr); return d.toLocaleDateString('pt-BR'); } catch (e) { return dateStr; } }
 function getDaysRemaining(album) { var dateStr = album._expiryDate || album.expiryDate; if (!dateStr) return null; try { var now = new Date(); var expiry = new Date(dateStr); var diff = expiry.getTime() - now.getTime(); return Math.ceil(diff / (1000 * 60 * 60 * 24)); } catch (e) { return null; } }
 
@@ -527,7 +524,7 @@ function ClientApp(props) {
         {featuredList.map(function(url, i) { return <div key={i} className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000 scale-105 blur-[3px]" style={{ backgroundImage: 'url(' + url + ')', opacity: i === bgImageIdx ? 0.35 : 0, zIndex: 1 }} />; })}
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80 z-[2]" />
         <div className="max-w-md w-full bg-black/40 backdrop-blur-xl border border-white/15 rounded-3xl p-8 text-center shadow-2xl relative z-10">
-          <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-[#d4af37] shadow-2xl mx-auto mb-4 bg-neutral-900 p-1"><img src={album.profileImage || album.photos[0] || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} alt="Capa" className="w-full h-full object-cover rounded-full" /></div>
+          <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-[#d4af37] shadow-2xl mx-auto mb-4 bg-neutral-900 p-1"><img src={album.profileImage || (album.photos && album.photos[0]) || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} alt="Capa" className="w-full h-full object-cover rounded-full" /></div>
           <h2 className="text-2xl font-bold tracking-tight mb-1 text-white">{album.clientName}</h2>
           <p className="text-[#d4af37] text-xs uppercase tracking-widest font-semibold mb-6">{album.subtitle || 'Album Privado'}</p>
           {album.expiryDate && <div className={'mb-6 rounded-xl p-3 flex items-center gap-2 ' + (albumExpired ? 'bg-red-500/10 border border-red-500/30' : daysRemaining <= 7 ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-white/5 border border-white/10')}><Clock size={16} className={albumExpired ? 'text-red-400' : daysRemaining <= 7 ? 'text-yellow-400' : 'text-[#d4af37]'} /><div className="text-left flex-1"><p className={'text-xs ' + (albumExpired ? 'text-red-400' : 'text-gray-300')}>{albumExpired ? 'Album expirado em ' + expiryDateFormatted : 'Album disponivel ate ' + expiryDateFormatted}</p>{!albumExpired && daysRemaining !== null && <p className={'text-[10px] ' + (daysRemaining <= 7 ? 'text-yellow-400' : 'text-gray-500')}>{daysRemaining <= 0 ? 'Expira hoje' : daysRemaining === 1 ? '1 dia restante' : daysRemaining + ' dias restantes'}</p>}</div></div>}
@@ -542,10 +539,10 @@ function ClientApp(props) {
     <div className="min-h-screen bg-[#111] text-white pb-12 relative">
       <SharePopup isOpen={showSharePopup} photoUrl={sharePhotoUrl} album={album} onClose={handleCloseSharePopup} />
       <div className="relative w-full h-32 sm:h-44 lg:h-56 overflow-hidden">
-        <div className="absolute inset-0 bg-cover bg-center blur-sm opacity-40 scale-105" style={{ backgroundImage: 'url(' + (album.profileImage || album.photos[0]) + ')' }} />
+        <div className="absolute inset-0 bg-cover bg-center blur-sm opacity-40 scale-105" style={{ backgroundImage: 'url(' + (album.profileImage || (album.photos && album.photos[0])) + ')' }} />
         <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-[#111]/70 to-transparent" />
         <div className="absolute bottom-0 left-0 w-full px-3 sm:px-6 pb-1 sm:pb-1.5 flex flex-row items-end justify-start gap-2 sm:gap-2.5">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-[#d4af37] shadow-lg bg-neutral-900 p-0.5 flex-shrink-0"><img src={album.profileImage || album.photos[0] || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} className="w-full h-full object-cover rounded-full" /></div>
+          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-[#d4af37] shadow-lg bg-neutral-900 p-0.5 flex-shrink-0"><img src={album.profileImage || (album.photos && album.photos[0]) || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} className="w-full h-full object-cover rounded-full" /></div>
           <div className="flex flex-col pb-0.5"><h1 className="text-base sm:text-xl font-bold text-white leading-tight">{album.clientName}</h1><p className="text-[#d4af37] text-[8px] sm:text-[11px] uppercase tracking-widest font-medium leading-tight">{album.subtitle || 'Album Fotografico'}</p></div>
         </div>
       </div>
@@ -576,7 +573,7 @@ function ClientApp(props) {
                 <div style={{ position: 'absolute', top: 0, left: 0, width: '20px', height: '100%', background: 'linear-gradient(to right, rgba(10,10,10,1), rgba(10,10,10,0))', pointerEvents: 'none', zIndex: 1 }} /><div style={{ position: 'absolute', top: 0, right: 0, width: '20px', height: '100%', background: 'linear-gradient(to left, rgba(10,10,10,1), rgba(10,10,10,0))', pointerEvents: 'none', zIndex: 1 }} />
               </div>
               <div className="absolute top-8 sm:top-9 inset-x-4 sm:inset-x-5 flex justify-between items-center z-30 px-1">
-                <div className="flex items-center gap-2.5"><div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden border border-white/20 bg-neutral-800 p-0.5"><img src={album.profileImage || album.photos[0]} alt="Perfil" className="w-full h-full object-cover rounded-full" /></div><div className="flex flex-col"><span className="text-xs sm:text-sm font-semibold text-white leading-none mb-0.5">{album.clientName}</span><span className="text-[9px] sm:text-[11px] text-white/80 font-medium leading-none">{album.subtitle || 'Album Fotografico'}</span></div></div>
+                <div className="flex items-center gap-2.5"><div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden border border-white/20 bg-neutral-800 p-0.5"><img src={album.profileImage || (album.photos && album.photos[0])} alt="Perfil" className="w-full h-full object-cover rounded-full" /></div><div className="flex flex-col"><span className="text-xs sm:text-sm font-semibold text-white leading-none mb-0.5">{album.clientName}</span><span className="text-[9px] sm:text-[11px] text-white/80 font-medium leading-none">{album.subtitle || 'Album Fotografico'}</span></div></div>
                 <div className="flex gap-3 sm:gap-2.5 items-center">{album.storyMusic && <button onClick={toggleMute} className="text-white hover:opacity-70">{isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>}<button onClick={function(e) { e.stopPropagation(); handleShareCurrentStory(); }} className="text-white hover:opacity-70 transition-opacity" title="Compartilhar"><Share2 size={16} /></button><button onClick={function() { setIsStoryPlaying(!isStoryPlaying); }} className="text-white hover:opacity-70">{isStoryPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</button><button onClick={function() { setIsStoryPlaying(false); setActiveTab('gallery'); if (audioRef.current) audioRef.current.pause(); }} className="text-white hover:opacity-70"><X size={22} /></button></div>
               </div>
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-950"><img src={album.photos[currentStoryIdx]} alt={'Story ' + (currentStoryIdx + 1)} className="w-full h-full object-contain" /></div>
@@ -747,7 +744,7 @@ function AlbumLoader(props) {
         <div className="relative z-10 text-center max-w-sm w-full flex flex-col items-center">
           <div className="relative w-48 h-48 mb-6 flex items-center justify-center">
             <div className="w-32 h-32 rounded-full overflow-hidden border-4 border-[#d4af37] shadow-[0_0_40px_rgba(212,175,55,0.4)] bg-neutral-900 relative flex items-center justify-center p-2">
-              {album?.loaderLogo ? <img src={album.loaderLogo} alt="Logo" className="w-full h-full object-contain" /> : album?.profileImage || album?.photos?.[0] ? <img src={album.profileImage || album.photos[0]} alt="Perfil" className="w-full h-full object-cover rounded-full" /> : <div className="w-full h-full bg-neutral-800 animate-pulse flex items-center justify-center rounded-full"><Camera size={24} className="text-neutral-600" /></div>}
+              {album?.loaderLogo ? <img src={album.loaderLogo} alt="Logo" className="w-full h-full object-contain" /> : album?.profileImage || album?.photos?.[0] ? <img src={album.profileImage || (album.photos && album.photos[0])} alt="Perfil" className="w-full h-full object-cover rounded-full" /> : <div className="w-full h-full bg-neutral-800 animate-pulse flex items-center justify-center rounded-full"><Camera size={24} className="text-neutral-600" /></div>}
             </div>
           </div>
           <h2 className="text-2xl font-bold tracking-tight text-white mb-1">{album?.clientName || 'Conectando...'}</h2>
@@ -790,22 +787,45 @@ function AlbumLoader(props) {
 function AdminDashboard(props) {
   var albums = props.albums, setAlbums = props.setAlbums, isLoading = props.isLoading, isAdminLoggedIn = props.isAdminLoggedIn, setIsAdminLoggedIn = props.setIsAdminLoggedIn;
   var _useState29 = useState(null), copiedId = _useState29[0], setCopiedId = _useState29[1];
+  
   var handleLogout = function() { sessionStorage.removeItem('adminLoggedIn'); sessionStorage.removeItem('adminUser'); setIsAdminLoggedIn(false); };
-  var handleDeleteAlbum = function(shortId) { if(window.confirm('Excluir este álbum permanentemente?')) { deleteAlbumFromSheets(shortId).then(function(success) { if (success) { setAlbums(albums.filter(function(a) { return a.shortId !== shortId; })); alert('✅ Álbum excluído!'); } else { alert('❌ Erro ao excluir.'); } }).catch(function() { alert('❌ Erro ao conectar.'); }); } };
+  var handleDeleteAlbum = function(shortId) { 
+    if(window.confirm('Excluir este álbum permanentemente? AS FOTOS SERÃO APAGADAS DO CLOUDINARY!')) { 
+      deleteAlbumFromSheets(shortId).then(function(success) { 
+        if (success) { 
+          setAlbums(albums.filter(function(a) { return a.shortId !== shortId; })); 
+          alert('✅ Álbum e imagens excluídas!'); 
+        } else { 
+          alert('❌ Erro ao excluir.'); 
+        } 
+      }).catch(function() { alert('❌ Erro ao conectar.'); }); 
+    } 
+  };
+  
+  var handleSendEmail = function(album) {
+    if (!album.clientEmail) { alert('❌ Álbum sem e-mail cadastrado! Edite e adicione um e-mail.'); return; }
+    if (window.confirm(`Deseja enviar o e-mail de acesso para ${album.clientEmail}?`)) {
+      sendEmailFromSheets(album).then(function(success) {
+        if (success) alert('✅ E-mail enviado com sucesso!');
+        else alert('❌ Erro ao enviar e-mail.');
+      });
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-gray-900">
       <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 sm:px-8 py-3 sm:py-4 flex justify-between items-center sticky top-0 z-10">
         <div className="flex items-center gap-2"><div className="bg-black text-[#d4af37] p-1.5 rounded-lg"><Camera size={20} /></div><h1 className="text-lg sm:text-xl font-semibold">Studio Dashboard</h1></div>
         <div className="flex items-center gap-2"><button onClick={function() { window.location.hash = '#new'; }} className="bg-black text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full font-medium flex items-center gap-1.5 hover:bg-gray-800 transition-all text-xs sm:text-sm shadow-sm"><Plus size={14} /> <span className="hidden sm:inline">Criar Album</span></button><button onClick={handleLogout} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1 transition-all" title="Sair"><LogOut size={14} /></button></div>
       </header>
-      <main className="max-w-7xl mx-auto p-4 sm:p-6"><div className="mb-6"><h2 className="text-xl sm:text-2xl font-semibold">Os Meus Envios</h2><p className="text-gray-500 text-xs mt-0.5">Albuns armazenados de forma permanente.</p></div>{isLoading ? <div className="flex justify-center py-16"><Loader2 size={36} className="animate-spin text-gray-400" /></div> : albums.length === 0 ? <div className="bg-white rounded-2xl border border-gray-200 p-10 sm:p-14 text-center"><div className="bg-gray-100 rounded-full p-3 mb-3 inline-block"><ImageIcon size={36} className="text-gray-400" /></div><h3 className="text-base font-semibold text-gray-700">Nenhum album criado</h3></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">{albums.map(function(album) { var expired = isAlbumExpired(album); var daysLeft = getDaysRemaining(album); return <div key={album.id} className={'bg-white rounded-2xl shadow-sm border hover:shadow-md transition-shadow p-4 flex flex-col ' + (expired ? 'border-red-300 bg-red-50/30' : 'border-gray-100')}><div className="flex items-center gap-3 mb-3"><div className="w-12 h-12 rounded-full overflow-hidden bg-gray-100"><img src={album.profileImage || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} alt="Cover" className="w-full h-full object-cover" /></div><div className="flex-1"><h3 className="font-semibold text-base truncate">{album.clientName}</h3><p className="text-xs text-gray-500">{album.subtitle}</p></div></div><div className="bg-gray-50 p-2.5 rounded-xl text-xs text-gray-600 mb-1.5">📸 {(album.photos || []).length} fotos | 🔑 ID: {album.shortId}</div>{album.expiryDate && <div className={'rounded-lg p-2 mb-2 flex items-center gap-1.5 text-[10px] ' + (expired ? 'bg-red-100 text-red-700' : daysLeft <= 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700')}><Clock size={12} /><span>{expired ? 'Expirado' : daysLeft + ' dia(s) restantes'}</span></div>}<div className="mt-auto flex items-center justify-between pt-3 border-t border-gray-100"><div className="flex gap-1"><button onClick={function() { window.location.hash = '#edit_' + album.id; }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg"><Edit3 size={16} /></button><button onClick={function() { handleDeleteAlbum(album.shortId); }} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg"><Trash2 size={16} /></button></div><button onClick={function() { var url = window.location.origin + '/api/share?id=' + album.shortId; navigator.clipboard.writeText(url); setCopiedId(album.id); setTimeout(function() { setCopiedId(null); }, 2000); }} className={'px-3 py-1.5 rounded-full font-medium text-xs flex items-center gap-1 ' + (copiedId === album.id ? 'bg-green-500 text-white' : 'bg-black text-white')}>{copiedId === album.id ? <CheckCircle size={11} /> : <LinkIcon size={11} />}Copiar Link</button></div></div>; })}</div>}</main>
+      <main className="max-w-7xl mx-auto p-4 sm:p-6"><div className="mb-6"><h2 className="text-xl sm:text-2xl font-semibold">Os Meus Envios</h2><p className="text-gray-500 text-xs mt-0.5">Albuns armazenados de forma permanente.</p></div>{isLoading ? <div className="flex justify-center py-16"><Loader2 size={36} className="animate-spin text-gray-400" /></div> : albums.length === 0 ? <div className="bg-white rounded-2xl border border-gray-200 p-10 sm:p-14 text-center"><div className="bg-gray-100 rounded-full p-3 mb-3 inline-block"><ImageIcon size={36} className="text-gray-400" /></div><h3 className="text-base font-semibold text-gray-700">Nenhum album criado</h3></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">{albums.map(function(album) { var expired = isAlbumExpired(album); var daysLeft = getDaysRemaining(album); return <div key={album.id} className={'bg-white rounded-2xl shadow-sm border hover:shadow-md transition-shadow p-4 flex flex-col ' + (expired ? 'border-red-300 bg-red-50/30' : 'border-gray-100')}><div className="flex items-center gap-3 mb-3"><div className="w-12 h-12 rounded-full overflow-hidden bg-gray-100"><img src={album.profileImage || (album.photos && album.photos[0]) || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} alt="Cover" className="w-full h-full object-cover" /></div><div className="flex-1"><h3 className="font-semibold text-base truncate">{album.clientName}</h3><p className="text-xs text-gray-500">{album.subtitle}</p></div></div><div className="bg-gray-50 p-2.5 rounded-xl text-xs text-gray-600 mb-1.5">📸 {(album.photos || []).length} fotos | 🔑 ID: {album.shortId}</div>{album.expiryDate && <div className={'rounded-lg p-2 mb-2 flex items-center gap-1.5 text-[10px] ' + (expired ? 'bg-red-100 text-red-700' : daysLeft <= 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700')}><Clock size={12} /><span>{expired ? 'Expirado' : daysLeft + ' dia(s) restantes'}</span></div>}<div className="mt-auto flex items-center justify-between pt-3 border-t border-gray-100"><div className="flex gap-1"><button onClick={function() { window.location.hash = '#edit_' + album.id; }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg" title="Editar Álbum"><Edit3 size={16} /></button><button onClick={function() { handleSendEmail(album); }} className="p-1.5 text-gray-400 hover:text-[#00965e] rounded-lg" title="Enviar E-mail ao Cliente"><Mail size={16} /></button><button onClick={function() { handleDeleteAlbum(album.shortId); }} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg" title="Deletar Álbum"><Trash2 size={16} /></button></div><button onClick={function() { var url = window.location.origin + '/api/share?id=' + album.shortId; navigator.clipboard.writeText(url); setCopiedId(album.id); setTimeout(function() { setCopiedId(null); }, 2000); }} className={'px-3 py-1.5 rounded-full font-medium text-xs flex items-center gap-1 ' + (copiedId === album.id ? 'bg-green-500 text-white' : 'bg-black text-white')}>{copiedId === album.id ? <CheckCircle size={11} /> : <LinkIcon size={11} />}Copiar Link</button></div></div>; })}</div>}</main>
     </div>
   );
 }
 
 function AdminEditor(props) {
   var album = props.album, onSave = props.onSave, onCancel = props.onCancel, isNew = !album;
-  var _useState30 = useState(album || { id: 'album_' + Math.random().toString(36).substr(2, 9), shortId: generateShortId(), clientName: '', subtitle: '', pin: '', profileImage: '', googleDriveUrl: '', whatsappNumber: '', storyMusic: '', musicStartTime: null, musicEndTime: null, introVideo: '', expiryDate: '', photos: [], featuredPhotos: [], loaderLogo: '', loaderBackgrounds: [], createdAt: new Date().toISOString() }), formData = _useState30[0], setFormData = _useState30[1];
+  var _useState30 = useState(album || { id: 'album_' + Math.random().toString(36).substr(2, 9), shortId: generateShortId(), clientName: '', subtitle: '', clientEmail: '', pin: '', profileImage: '', googleDriveUrl: '', whatsappNumber: '', storyMusic: '', musicStartTime: null, musicEndTime: null, introVideo: '', expiryDate: '', photos: [], featuredPhotos: [], loaderLogo: '', loaderBackgrounds: [], createdAt: new Date().toISOString() }), formData = _useState30[0], setFormData = _useState30[1];
   var _useState31 = useState('dados'), activeTab = _useState31[0], setActiveTab = _useState31[1];
   var _useState32 = useState(formData.photos || []), up = _useState32[0], setUp = _useState32[1];
   var _useState33 = useState(formData.featuredPhotos || []), sf = _useState33[0], setSf = _useState33[1];
@@ -823,6 +843,7 @@ function AdminEditor(props) {
   var _useState43 = useState(0), upr = _useState43[0], setUpr = _useState43[1];
   var _useState44 = useState(false), isSaving = _useState44[0], setIsSaving = _useState44[1];
   var _useState45 = useState(''), uploadStatus = _useState45[0], setUploadStatus = _useState45[1];
+  
   var f2b = function(f) { return new Promise(function(r, j) { var rd = new FileReader(); rd.readAsDataURL(f); rd.onload = function() { r(rd.result); }; rd.onerror = j; }); };
   var ri = function(b64, mw) { mw = mw || 1200; return new Promise(function(r) { var img = new Image(); img.onload = function() { var c = document.createElement('canvas'); var w = img.width, h = img.height; if (w > mw) { h = (h * mw) / w; w = mw; } c.width = w; c.height = h; c.getContext('2d').drawImage(img, 0, 0, w, h); r(c.toDataURL('image/jpeg', 0.8)); }; img.src = b64; }); };
   var hfu = async function(e) { var fs = Array.from(e.target.files); if (!fs.length) return; setIu(true); var np = up.slice(); var p = 0; for (var i = 0; i < fs.length; i++) { var f = fs[i]; if (f.type.startsWith('image/')) { try { var b = await f2b(f); b = await ri(b, 1200); np.push(b); } catch (_) {} } p++; setUpr(Math.round((p / fs.length) * 100)); } setUp(np); setIu(false); setUpr(0); e.target.value = ''; };
@@ -846,7 +867,6 @@ function AdminEditor(props) {
       var total = up.length + (smf ? 1 : 0) + (videoFile ? 1 : 0) + (ll && ll.indexOf('http') !== 0 ? 1 : 0) + (lb || []).length; 
       var step = 0; 
       
-      // Upload das imagens
       for (var i = 0; i < up.length; i++) { 
         var ph = up[i]; 
         if (ph.startsWith('http')) { 
@@ -862,7 +882,6 @@ function AdminEditor(props) {
         setUploadStatus('Enviando fotos...'); 
       } 
       
-      // Upload da música (áudio)
       var fM = smp; 
       if (smf) { 
         setUploadStatus('Enviando musica...'); 
@@ -872,7 +891,6 @@ function AdminEditor(props) {
         setUpr(Math.round((step / total) * 100)); 
       } 
       
-      // Upload do vídeo
       var fVideo = videoPreview; 
       if (videoFile) { 
         setUploadStatus('Enviando video...'); 
@@ -883,7 +901,6 @@ function AdminEditor(props) {
         setUpr(Math.round((step / total) * 100)); 
       } 
       
-      // Upload da logo
       var fL = ll; 
       if (ll && ll.indexOf('http') !== 0) { 
         fL = await uploadToCloudinary(ll, aid, 'image'); 
@@ -891,7 +908,6 @@ function AdminEditor(props) {
         step++; 
       } 
       
-      // Upload dos fundos
       var fBgs = []; 
       for (var j = 0; j < (lb || []).length; j++) { 
         var bg = lb[j]; 
@@ -904,14 +920,12 @@ function AdminEditor(props) {
         step++; 
       } 
       
-      // Fotos em destaque
       var uf = []; 
       for (var k = 0; k < sf.length; k++) { 
         var oi = sf[k], ni = urls.findIndex(function(u) { return u === up[oi]; }); 
         if (ni !== -1) uf.push(ni); 
       } 
       
-      // Foto de perfil
       var fP = sp; 
       if (sp && sp.indexOf('http') !== 0) { 
         var pi = urls.findIndex(function(u) { return u === sp; }); 
@@ -939,7 +953,6 @@ function AdminEditor(props) {
         setUploadStatus('✅ Concluído!'); 
         setTimeout(function() { 
           onSave(fd); 
-          alert('Album salvo!'); 
         }, 500); 
       } else throw new Error("Falha ao salvar."); 
     } catch (er) { 
@@ -960,7 +973,10 @@ function AdminEditor(props) {
           {activeTab === 'dados' && (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3"><div><label className="block text-xs font-medium text-gray-700 mb-1">Nome do Cliente</label><input type="text" value={formData.clientName} onChange={function(e) { setFormData(Object.assign({}, formData, { clientName: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: Casamento Joao & Maria" /></div><div><label className="block text-xs font-medium text-gray-700 mb-1">Subtitulo</label><input type="text" value={formData.subtitle} onChange={function(e) { setFormData(Object.assign({}, formData, { subtitle: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: 15 de Outubro, 2026" /></div></div>
-              <div><label className="block text-xs font-medium text-gray-700 mb-1">PIN de Acesso</label><input type="text" value={formData.pin} onChange={function(e) { setFormData(Object.assign({}, formData, { pin: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: 1234" /></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div><label className="block text-xs font-medium text-gray-700 mb-1">E-mail do Cliente (Para Envios Automáticos)</label><input type="email" value={formData.clientEmail || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { clientEmail: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: cliente@email.com" /></div>
+                <div><label className="block text-xs font-medium text-gray-700 mb-1">PIN de Acesso</label><input type="text" value={formData.pin} onChange={function(e) { setFormData(Object.assign({}, formData, { pin: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: 1234" /></div>
+              </div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">Link do Google Drive (Download)</label><input type="url" value={formData.googleDriveUrl} onChange={function(e) { setFormData(Object.assign({}, formData, { googleDriveUrl: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="https://drive.google.com/drive/folders/..." /></div>
               <div><label className="block text-xs font-medium text-gray-700 mb-1">📱 WhatsApp</label><input type="tel" value={formData.whatsappNumber || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { whatsappNumber: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none" placeholder="Ex: 11912345678" /></div>
               <div className="p-4 border border-orange-200 rounded-xl bg-orange-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">📅 Prazo de Expiracao do Album (opcional)</label><div className="flex items-center gap-2"><Calendar size={16} className="text-orange-500" /><input type="date" value={formData.expiryDate || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { expiryDate: e.target.value })); }} className="w-full border border-orange-200 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none" /></div></div>
