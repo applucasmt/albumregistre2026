@@ -1,13 +1,20 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { 
-  Camera, Plus, Trash2, Edit3, Link as LinkIcon, Eye, 
-  PlayCircle, Grid, Download, ArrowRight, Lock, 
+import {
+  // Ícones álbuns
+  Camera, Plus, Trash2, Edit3, Link as LinkIcon, Eye,
+  PlayCircle, Grid, Download, ArrowRight, Lock,
   Pause, Play, Image as ImageIcon, CheckCircle, X, Loader2,
   Save, FolderUp, MessageCircle, Settings, FileText, Upload, Music, Volume2, VolumeX,
   Video, SkipForward, Scissors, Clock, AlertTriangle, Calendar,
-  Share2, LogIn, LogOut, User, Mail
+  Share2, LogIn, LogOut, User, Mail,
+  // Ícones Registre Foto
+  LayoutDashboard, DollarSign, Briefcase, Users, Menu, Receipt, MapPin,
+  PenTool, ExternalLink, Wallet, Edit, Images, Home
 } from 'lucide-react';
 
+/* ============================================================
+   BACKEND 1: ÁLBUNS
+   ============================================================ */
 const CLOUDINARY_CONFIG = {
   cloudName: 'gyzeubzm',
   uploadPreset: 'registre_album',
@@ -21,6 +28,21 @@ const ADMIN_CREDENTIALS = {
   password: 'registre2026@'
 };
 
+/* ============================================================
+   BACKEND 2: REGISTRE FOTO
+   ============================================================ */
+const REGISTRE_API_URL =
+  (typeof localStorage !== 'undefined' && localStorage.getItem('REGISTRE_API_URL')) ||
+  'https://script.google.com/macros/s/AKfycbzwxGJM8KdcTHnYUGx253YbQDpw3bYMXEVDQDpYRncB7IFPBGX2a3rxFUD6Evb9tO3GGw/exec';
+
+const REGISTRE_CREDENTIALS = {
+  username: 'registre',
+  password: 'registre2026@'
+};
+
+/* ============================================================
+   HELPERS ÁLBUNS
+   ============================================================ */
 function extractDriveId(url) {
   if (!url) return null;
   const patterns = [/\/d\/([a-zA-Z0-9_-]+)/, /id=([a-zA-Z0-9_-]+)/, /\/file\/d\/([a-zA-Z0-9_-]+)/, /open\?id=([a-zA-Z0-9_-]+)/];
@@ -48,18 +70,14 @@ function uploadVideoToCloudinary(file, albumId) {
     formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
     formData.append('folder', CLOUDINARY_CONFIG.folder + '/' + albumId);
     xhr.open('POST', 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/video/upload', true);
-    xhr.onload = function() { 
-      if (xhr.status >= 200 && xhr.status < 300) { 
-        var data = JSON.parse(xhr.responseText); 
-        resolve(data.secure_url); 
-      } else { 
-        try {
-          var errorData = JSON.parse(xhr.responseText);
-          reject(new Error(errorData.error?.message || 'Erro no upload do video'));
-        } catch(e) {
-          reject(new Error('Erro no upload do video: ' + xhr.status));
-        }
-      } 
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        var data = JSON.parse(xhr.responseText);
+        resolve(data.secure_url);
+      } else {
+        try { var e = JSON.parse(xhr.responseText); reject(new Error(e.error?.message || 'Erro no upload do video')); }
+        catch(_) { reject(new Error('Erro no upload do video: ' + xhr.status)); }
+      }
     };
     xhr.onerror = function() { reject(new Error('Erro de rede ao enviar video')); };
     xhr.send(formData);
@@ -74,18 +92,14 @@ function uploadAudioToCloudinary(file, albumId) {
     formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
     formData.append('folder', CLOUDINARY_CONFIG.folder + '/' + albumId);
     xhr.open('POST', 'https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/video/upload', true);
-    xhr.onload = function() { 
-      if (xhr.status >= 200 && xhr.status < 300) { 
-        var data = JSON.parse(xhr.responseText); 
-        resolve(data.secure_url); 
-      } else { 
-        try {
-          var errorData = JSON.parse(xhr.responseText);
-          reject(new Error(errorData.error?.message || 'Erro no upload do audio'));
-        } catch(e) {
-          reject(new Error('Erro no upload do audio: ' + xhr.status));
-        }
-      } 
+    xhr.onload = function() {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        var data = JSON.parse(xhr.responseText);
+        resolve(data.secure_url);
+      } else {
+        try { var e = JSON.parse(xhr.responseText); reject(new Error(e.error?.message || 'Erro no upload do audio')); }
+        catch(_) { reject(new Error('Erro no upload do audio: ' + xhr.status)); }
+      }
     };
     xhr.onerror = function() { reject(new Error('Erro de rede ao enviar audio')); };
     xhr.send(formData);
@@ -95,26 +109,25 @@ function uploadAudioToCloudinary(file, albumId) {
 async function uploadToCloudinary(file, albumId, resourceType) {
   resourceType = resourceType || 'image';
   if (typeof file === 'string' && file.startsWith('http') && file.indexOf('cloudinary') !== -1) return file;
-  if (resourceType === 'video' && file instanceof File) { return await uploadVideoToCloudinary(file, albumId); }
-  if (resourceType === 'audio' && file instanceof File) { return await uploadAudioToCloudinary(file, albumId); }
+  if (resourceType === 'video' && file instanceof File) return await uploadVideoToCloudinary(file, albumId);
+  if (resourceType === 'audio' && file instanceof File) return await uploadAudioToCloudinary(file, albumId);
   try {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('upload_preset', CLOUDINARY_CONFIG.uploadPreset);
     formData.append('folder', CLOUDINARY_CONFIG.folder + '/' + albumId);
-    const response = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/image/upload', { 
-      method: 'POST', 
-      body: formData 
+    const response = await fetch('https://api.cloudinary.com/v1_1/' + CLOUDINARY_CONFIG.cloudName + '/image/upload', {
+      method: 'POST', body: formData
     });
-    if (!response.ok) { 
-      const error = await response.json(); 
-      throw new Error(error.error?.message || 'Erro no upload da imagem'); 
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error?.message || 'Erro no upload da imagem');
     }
     const data = await response.json();
     return data.secure_url;
-  } catch (error) { 
-    console.error('Erro no upload da imagem:', error); 
-    throw error; 
+  } catch (error) {
+    console.error('Erro no upload da imagem:', error);
+    throw error;
   }
 }
 
@@ -126,14 +139,23 @@ function getOptimizedVideoUrl(videoUrl) {
 function updateFavicon(photoUrl) {
   if (!photoUrl) return;
   var existingFavicon = document.querySelector('link[rel="icon"]');
-  if (existingFavicon) { existingFavicon.remove(); }
+  if (existingFavicon) existingFavicon.remove();
   var canvas = document.createElement('canvas');
   canvas.width = 32; canvas.height = 32;
   var ctx = canvas.getContext('2d');
   var img = new Image();
   img.crossOrigin = 'anonymous';
-  img.onload = function() { ctx.beginPath(); ctx.arc(16, 16, 16, 0, Math.PI * 2); ctx.closePath(); ctx.clip(); ctx.drawImage(img, 0, 0, 32, 32); var favicon = document.createElement('link'); favicon.rel = 'icon'; favicon.type = 'image/png'; favicon.href = canvas.toDataURL('image/png'); document.head.appendChild(favicon); };
-  img.onerror = function() { var favicon = document.createElement('link'); favicon.rel = 'icon'; favicon.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📸</text></svg>'; document.head.appendChild(favicon); };
+  img.onload = function() {
+    ctx.beginPath(); ctx.arc(16,16,16,0,Math.PI*2); ctx.closePath(); ctx.clip();
+    ctx.drawImage(img,0,0,32,32);
+    var f = document.createElement('link'); f.rel='icon'; f.type='image/png'; f.href=canvas.toDataURL('image/png');
+    document.head.appendChild(f);
+  };
+  img.onerror = function() {
+    var f = document.createElement('link'); f.rel='icon';
+    f.href = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📸</text></svg>';
+    document.head.appendChild(f);
+  };
   img.src = photoUrl;
 }
 
@@ -141,45 +163,198 @@ function updateMetaTags(album) {
   if (!album) return;
   const photoUrl = album.profileImage || (album.photos && album.photos[0]) || '';
   document.title = album.clientName || 'Album';
-  const metaTags = [{ property: 'og:title', content: album.clientName || '' }, { property: 'og:image', content: photoUrl }, { name: 'description', content: album.subtitle || '' }];
-  metaTags.forEach(function(tag) { var meta; if (tag.property) { meta = document.querySelector('meta[property="' + tag.property + '"]'); if (!meta) { meta = document.createElement('meta'); meta.setAttribute('property', tag.property); } } else { meta = document.querySelector('meta[name="' + tag.name + '"]'); if (!meta) { meta = document.createElement('meta'); meta.setAttribute('name', tag.name); } } meta.setAttribute('content', tag.content); if (!meta.parentNode) document.head.appendChild(meta); });
+  const metaTags = [
+    { property: 'og:title', content: album.clientName || '' },
+    { property: 'og:image', content: photoUrl },
+    { name: 'description', content: album.subtitle || '' }
+  ];
+  metaTags.forEach(function(tag) {
+    var meta;
+    if (tag.property) {
+      meta = document.querySelector('meta[property="' + tag.property + '"]');
+      if (!meta) { meta = document.createElement('meta'); meta.setAttribute('property', tag.property); }
+    } else {
+      meta = document.querySelector('meta[name="' + tag.name + '"]');
+      if (!meta) { meta = document.createElement('meta'); meta.setAttribute('name', tag.name); }
+    }
+    meta.setAttribute('content', tag.content);
+    if (!meta.parentNode) document.head.appendChild(meta);
+  });
   updateFavicon(photoUrl);
 }
 
-const saveAlbumToSheets = async function(album) { try { const response = await fetch(SHEETS_API_URL, { method: 'POST', mode: 'cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'save', id: album.shortId, album: album }) }); return (await response.json()).success; } catch (e) { return false; } };
-const deleteAlbumFromSheets = async function(shortId) { try { const response = await fetch(SHEETS_API_URL, { method: 'POST', mode: 'cors', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'delete', id: shortId }) }); return (await response.json()).success; } catch (e) { return false; } };
-const loadAlbumFromSheets = async function(shortId) { try { const response = await fetch(SHEETS_API_URL + '?id=' + shortId); const data = await response.json(); return data.success && data.album ? data.album : null; } catch (e) { return null; } };
-const loadAllAlbumsFromSheets = async function() { try { const response = await fetch(SHEETS_API_URL); const data = await response.json(); return data.success && data.albums ? data.albums : {}; } catch (e) { return {}; } };
-const generateShortId = function() { return Math.random().toString(36).substring(2, 8); };
-
-const sendEmailFromSheets = async function(album) { 
-  try { 
-    const response = await fetch(SHEETS_API_URL, { 
-      method: 'POST', 
-      mode: 'cors', 
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, 
-      body: JSON.stringify({ action: 'send_email', id: album.shortId, album: album, baseUrl: window.location.origin }) 
-    }); 
-    return (await response.json()).success; 
-  } catch (e) { return false; } 
+const saveAlbumToSheets = async function(album) {
+  try {
+    const response = await fetch(SHEETS_API_URL, {
+      method: 'POST', mode: 'cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'save', id: album.shortId, album: album })
+    });
+    return (await response.json()).success;
+  } catch (e) { return false; }
 };
 
-function isAlbumExpired(album) { if (!album) return false; if (album._isExpired === true || album._assetsDeleted === true) return true; if (album.expiryDate) { var now = new Date(); var expiry = new Date(album.expiryDate); return now > expiry; } return false; }
-function formatExpiryDate(album) { var dateStr = album._expiryDate || album.expiryDate; if (!dateStr) return null; try { var d = new Date(dateStr); return d.toLocaleDateString('pt-BR'); } catch (e) { return dateStr; } }
-function getDaysRemaining(album) { var dateStr = album._expiryDate || album.expiryDate; if (!dateStr) return null; try { var now = new Date(); var expiry = new Date(dateStr); var diff = expiry.getTime() - now.getTime(); return Math.ceil(diff / (1000 * 60 * 60 * 24)); } catch (e) { return null; } }
+const deleteAlbumFromSheets = async function(shortId) {
+  try {
+    const response = await fetch(SHEETS_API_URL, {
+      method: 'POST', mode: 'cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'delete', id: shortId })
+    });
+    return (await response.json()).success;
+  } catch (e) { return false; }
+};
 
-async function sharePhoto(photoUrl, album) {
-  try { const response = await fetch(photoUrl); const blob = await response.blob(); const file = new File([blob], 'foto.jpg', { type: 'image/jpeg' }); if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: 'Foto do album ' + (album.clientName || 'Album'), text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸' }); } else if (navigator.share) { await navigator.share({ title: 'Foto do album ' + (album.clientName || 'Album'), text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸', url: photoUrl }); } else { var text = encodeURIComponent('Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸'); window.open('https://wa.me/?text=' + text + '%20' + encodeURIComponent(photoUrl), '_blank'); } } catch (error) { console.log('Compartilhamento cancelado:', error); }
+const loadAlbumFromSheets = async function(shortId) {
+  try {
+    const response = await fetch(SHEETS_API_URL + '?id=' + shortId);
+    const data = await response.json();
+    return data.success && data.album ? data.album : null;
+  } catch (e) { return null; }
+};
+
+const loadAllAlbumsFromSheets = async function() {
+  try {
+    const response = await fetch(SHEETS_API_URL);
+    const data = await response.json();
+    return data.success && data.albums ? data.albums : {};
+  } catch (e) { return {}; }
+};
+
+const generateShortId = function() { return Math.random().toString(36).substring(2, 8); };
+
+const sendEmailFromSheets = async function(album) {
+  try {
+    const response = await fetch(SHEETS_API_URL, {
+      method: 'POST', mode: 'cors',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'send_email', id: album.shortId, album: album, baseUrl: window.location.origin })
+    });
+    return (await response.json()).success;
+  } catch (e) { return false; }
+};
+
+function isAlbumExpired(album) {
+  if (!album) return false;
+  if (album._isExpired === true || album._assetsDeleted === true) return true;
+  if (album.expiryDate) {
+    var now = new Date(), expiry = new Date(album.expiryDate);
+    return now > expiry;
+  }
+  return false;
 }
 
+function formatExpiryDate(album) {
+  var dateStr = album._expiryDate || album.expiryDate;
+  if (!dateStr) return null;
+  try { return new Date(dateStr).toLocaleDateString('pt-BR'); } catch (e) { return dateStr; }
+}
+
+function getDaysRemaining(album) {
+  var dateStr = album._expiryDate || album.expiryDate;
+  if (!dateStr) return null;
+  try {
+    var now = new Date(), expiry = new Date(dateStr);
+    return Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  } catch (e) { return null; }
+}
+
+async function sharePhoto(photoUrl, album) {
+  try {
+    const response = await fetch(photoUrl);
+    const blob = await response.blob();
+    const file = new File([blob], 'foto.jpg', { type: 'image/jpeg' });
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: 'Foto do album ' + (album.clientName || 'Album'), text: 'Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸' });
+    } else if (navigator.share) {
+      await navigator.share({ title: 'Foto do album ' + (album.clientName || 'Album'), text: 'Olha essa foto do album! 📸', url: photoUrl });
+    } else {
+      var text = encodeURIComponent('Olha essa foto do album "' + (album.clientName || 'Album') + '"! 📸');
+      window.open('https://wa.me/?text=' + text + '%20' + encodeURIComponent(photoUrl), '_blank');
+    }
+  } catch (error) { console.log('Compartilhamento cancelado:', error); }
+}
+
+/* ============================================================
+   HELPERS REGISTRE FOTO
+   ============================================================ */
+const formatDateBR = (v) => {
+  if (!v) return '';
+  const d = new Date(typeof v === 'string' && v.length === 10 ? v + 'T00:00:00' : v);
+  if (isNaN(d.getTime())) return v;
+  return d.toLocaleDateString('pt-BR');
+};
+
+const formatarDataHora = (v) => {
+  if (!v) return '-';
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return v;
+  const date = d.toLocaleDateString('pt-BR');
+  const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  return time === '00:00' ? date : `${date} às ${time}`;
+};
+
+const toNumber = (v) => {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return isNaN(v) ? 0 : v;
+  let s = String(v).trim();
+  if (/^(nan|#error!|#n\/a|#div\/0!|#value!|#ref!|#name\?|undefined|null)$/i.test(s)) return 0;
+  s = s.replace(/[R$\s]/g, '');
+  if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+  else if (s.includes(',')) s = s.replace(',', '.');
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+};
+
+const formatBRL = (v) => `R$ ${toNumber(v).toFixed(2)}`;
+
+const registreFetchData = async (sheet) => {
+  if (!REGISTRE_API_URL) return [];
+  try {
+    const res = await fetch(`${REGISTRE_API_URL}?action=read&sheet=${encodeURIComponent(sheet)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    return json.status === 'success' ? (json.data || []) : [];
+  } catch (e) {
+    console.error(`Erro buscar ${sheet}:`, e);
+    return [];
+  }
+};
+
+const registreSendSingle = async (sheet, data, action = 'create') => {
+  if (!REGISTRE_API_URL) return { ok: false, error: 'URL não configurada' };
+  try {
+    const res = await fetch(`${REGISTRE_API_URL}?action=${action}&sheet=${encodeURIComponent(sheet)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(data)
+    });
+    if (!res.ok) {
+      const txt = await res.text().catch(() => '');
+      return { ok: false, error: `HTTP ${res.status}: ${txt.slice(0, 200)}` };
+    }
+    const json = await res.json().catch(() => ({}));
+    return { ok: json.status === 'success' || res.ok, data: json.data, raw: json };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+};
+
+/* ============================================================
+   COMPONENTES AUXILIARES
+   ============================================================ */
 function SharePopup(props) {
   if (!props.isOpen) return null;
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)' }} onClick={props.onClose}>
-      <div style={{ background: '#1a1a1a', borderRadius: '24px', padding: '28px 24px', maxWidth: '340px', width: '90%', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onClick={function(e) { e.stopPropagation(); }}>
+      <div style={{ background: '#1a1a1a', borderRadius: '24px', padding: '28px 24px', maxWidth: '340px', width: '90%', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)' }} onClick={function(e) { e.stopPropagation(); }}>
         <h3 style={{ color: 'white', fontSize: '1.15rem', fontWeight: 600, marginBottom: '4px' }}>Compartilhar Foto</h3>
-        <div style={{ width: '140px', height: '140px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto 20px', border: '2px solid rgba(255,255,255,0.1)' }}><img src={props.photoUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /></div>
-        <button onClick={function() { sharePhoto(props.photoUrl, props.album); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: 'linear-gradient(135deg, #d4af37, #c4a137)', color: '#000', border: 'none', borderRadius: '16px', padding: '14px 20px', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', width: '100%', marginBottom: '12px' }}><Share2 size={20} /> Compartilhar Agora</button>
+        <div style={{ width: '140px', height: '140px', borderRadius: '12px', overflow: 'hidden', margin: '0 auto 20px', border: '2px solid rgba(255,255,255,0.1)' }}>
+          <img src={props.photoUrl} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </div>
+        <button onClick={function() { sharePhoto(props.photoUrl, props.album); }} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px', background: 'linear-gradient(135deg, #d4af37, #c4a137)', color: '#000', border: 'none', borderRadius: '16px', padding: '14px 20px', fontSize: '0.95rem', fontWeight: 700, cursor: 'pointer', width: '100%', marginBottom: '12px' }}>
+          <Share2 size={20} /> Compartilhar Agora
+        </button>
         <button onClick={props.onClose} style={{ background: 'rgba(255,255,255,0.08)', color: '#ccc', border: 'none', borderRadius: '12px', padding: '10px 20px', fontSize: '0.85rem', cursor: 'pointer', width: '100%' }}>Cancelar</button>
       </div>
     </div>
@@ -187,67 +362,1026 @@ function SharePopup(props) {
 }
 
 function AudioTrimmer(props) {
-  var audioUrl = props.audioUrl, startTime = props.startTime, endTime = props.endTime, duration = props.duration, onStartChange = props.onStartChange, onEndChange = props.onEndChange;
-  var _useState = useState(duration || 0), audioDuration = _useState[0], setAudioDuration = _useState[1];
-  var trackRef = useRef(null), previewAudioRef = useRef(null);
+  var { audioUrl, startTime, endTime, duration, onStartChange, onEndChange } = props;
+  var [audioDuration, setAudioDuration] = useState(duration || 0);
+  var trackRef = useRef(null);
+  var previewAudioRef = useRef(null);
   useEffect(function() { if (!duration && audioUrl) { var a = new Audio(audioUrl); a.addEventListener('loadedmetadata', function() { setAudioDuration(a.duration); }); a.load(); } }, [audioUrl, duration]);
   var maxDuration = audioDuration || 60;
   var startPercent = ((startTime || 0) / maxDuration) * 100;
   var endPercent = endTime ? (endTime / maxDuration) * 100 : 100;
-  var playPreview = function(s, e) { if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; } var a = new Audio(audioUrl); a.currentTime = s; a.volume = 0.7; previewAudioRef.current = a; a.play(); var stop = function() { if (a.currentTime >= e) { a.pause(); a.removeEventListener('timeupdate', stop); } }; a.addEventListener('timeupdate', stop); setTimeout(function() { if (a && !a.paused) a.pause(); }, 5000); };
-  var _useState2 = useState(null), isDragging = _useState2[0], setIsDragging = _useState2[1];
-  var handleMouseDown = function(h, e) { e.stopPropagation(); setIsDragging(h); var mm = function(e) { if (!trackRef.current) return; var r = trackRef.current.getBoundingClientRect(); var x = Math.max(0, Math.min(e.clientX - r.left, r.width)); var t = (x / r.width) * maxDuration; if (h === 'start') { if (t < (endTime || maxDuration)) onStartChange(Math.max(0, t)); } else { if (t > (startTime || 0)) onEndChange(Math.min(maxDuration, t)); } }; var mu = function() { setIsDragging(null); playPreview(startTime || 0, endTime || maxDuration); document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); }; document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu); };
-  var handleTouchStart = function(h, e) { e.stopPropagation(); setIsDragging(h); var tm = function(e) { if (!trackRef.current) return; var r = trackRef.current.getBoundingClientRect(); var x = Math.max(0, Math.min(e.touches[0].clientX - r.left, r.width)); var t = (x / r.width) * maxDuration; if (h === 'start') { if (t < (endTime || maxDuration)) onStartChange(Math.max(0, t)); } else { if (t > (startTime || 0)) onEndChange(Math.min(maxDuration, t)); } }; var tu = function() { setIsDragging(null); playPreview(startTime || 0, endTime || maxDuration); document.removeEventListener('touchmove', tm); document.removeEventListener('touchend', tu); }; document.addEventListener('touchmove', tm); document.addEventListener('touchend', tu); };
+  var playPreview = function(s, e) {
+    if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null; }
+    var a = new Audio(audioUrl); a.currentTime = s; a.volume = 0.7; previewAudioRef.current = a; a.play();
+    var stop = function() { if (a.currentTime >= e) { a.pause(); a.removeEventListener('timeupdate', stop); } };
+    a.addEventListener('timeupdate', stop);
+    setTimeout(function() { if (a && !a.paused) a.pause(); }, 5000);
+  };
+  var [isDragging, setIsDragging] = useState(null);
+  var handleMouseDown = function(h, e) {
+    e.stopPropagation(); setIsDragging(h);
+    var mm = function(e) {
+      if (!trackRef.current) return;
+      var r = trackRef.current.getBoundingClientRect();
+      var x = Math.max(0, Math.min(e.clientX - r.left, r.width));
+      var t = (x / r.width) * maxDuration;
+      if (h === 'start') { if (t < (endTime || maxDuration)) onStartChange(Math.max(0, t)); }
+      else { if (t > (startTime || 0)) onEndChange(Math.min(maxDuration, t)); }
+    };
+    var mu = function() { setIsDragging(null); playPreview(startTime || 0, endTime || maxDuration); document.removeEventListener('mousemove', mm); document.removeEventListener('mouseup', mu); };
+    document.addEventListener('mousemove', mm); document.addEventListener('mouseup', mu);
+  };
   var sd = (endTime || maxDuration) - (startTime || 0);
   return (
     <div className="space-y-3">
       <div className="bg-white rounded-xl p-4 border border-purple-100">
-        <div className="flex items-center justify-between mb-3"><div className="flex items-center gap-2"><Scissors size={16} className="text-purple-600" /><span className="text-sm font-medium text-gray-700">Selecionar trecho</span></div><div className="flex items-center gap-3"><span className="text-xs text-purple-600 font-medium">{sd.toFixed(1)}s</span><button type="button" onClick={function() { playPreview(startTime || 0, endTime || maxDuration); }} className="flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full"><Play size={12} fill="currentColor" /> Preview</button></div></div>
-        <div ref={trackRef} className="relative h-14 bg-gray-100 rounded-lg cursor-pointer overflow-hidden select-none">
-          <div className="absolute inset-0 bg-gradient-to-r from-purple-200/30 to-purple-400/30" /><div className="absolute top-0 bottom-0 bg-gradient-to-r from-purple-500/50 to-purple-600/50 border-l-2 border-r-2 border-purple-500" style={{ left: startPercent + '%', width: (endPercent - startPercent) + '%' }} />
-          <div className="absolute top-0 bottom-0 w-5 cursor-ew-resize z-10 flex items-center justify-center" style={{ left: 'calc(' + startPercent + '% - 10px)' }} onMouseDown={function(e) { handleMouseDown('start', e); }} onTouchStart={function(e) { handleTouchStart('start', e); }}><div className="w-2 h-10 bg-white rounded-full shadow-lg border border-purple-300" /><div className="absolute -top-5 bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">{(startTime || 0).toFixed(1)}s</div></div>
-          <div className="absolute top-0 bottom-0 w-5 cursor-ew-resize z-10 flex items-center justify-center" style={{ left: 'calc(' + endPercent + '% - 10px)' }} onMouseDown={function(e) { handleMouseDown('end', e); }} onTouchStart={function(e) { handleTouchStart('end', e); }}><div className="w-2 h-10 bg-white rounded-full shadow-lg border border-purple-300" /><div className="absolute -top-5 bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">{(endTime || maxDuration).toFixed(1)}s</div></div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <Scissors size={16} className="text-purple-600" />
+            <span className="text-sm font-medium text-gray-700">Selecionar trecho</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-purple-600 font-medium">{sd.toFixed(1)}s</span>
+            <button type="button" onClick={function() { playPreview(startTime || 0, endTime || maxDuration); }} className="flex items-center gap-1 text-xs bg-purple-100 text-purple-700 px-2 py-1 rounded-full">
+              <Play size={12} fill="currentColor" /> Preview
+            </button>
+          </div>
         </div>
-        <div className="flex justify-between mt-1.5 px-1"><span className="text-[10px] text-gray-400">0s</span><span className="text-[10px] text-gray-400">{maxDuration.toFixed(0)}s</span></div>
+        <div ref={trackRef} className="relative h-14 bg-gray-100 rounded-lg cursor-pointer overflow-hidden select-none">
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-200/30 to-purple-400/30" />
+          <div className="absolute top-0 bottom-0 bg-gradient-to-r from-purple-500/50 to-purple-600/50 border-l-2 border-r-2 border-purple-500" style={{ left: startPercent + '%', width: (endPercent - startPercent) + '%' }} />
+          <div className="absolute top-0 bottom-0 w-5 cursor-ew-resize z-10 flex items-center justify-center" style={{ left: 'calc(' + startPercent + '% - 10px)' }} onMouseDown={function(e) { handleMouseDown('start', e); }}>
+            <div className="w-2 h-10 bg-white rounded-full shadow-lg border border-purple-300" />
+            <div className="absolute -top-5 bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">{(startTime || 0).toFixed(1)}s</div>
+          </div>
+          <div className="absolute top-0 bottom-0 w-5 cursor-ew-resize z-10 flex items-center justify-center" style={{ left: 'calc(' + endPercent + '% - 10px)' }} onMouseDown={function(e) { handleMouseDown('end', e); }}>
+            <div className="w-2 h-10 bg-white rounded-full shadow-lg border border-purple-300" />
+            <div className="absolute -top-5 bg-purple-600 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">{(endTime || maxDuration).toFixed(1)}s</div>
+          </div>
+        </div>
+        <div className="flex justify-between mt-1.5 px-1">
+          <span className="text-[10px] text-gray-400">0s</span>
+          <span className="text-[10px] text-gray-400">{maxDuration.toFixed(0)}s</span>
+        </div>
       </div>
     </div>
   );
 }
 
 function LoginScreen(props) {
-  var onLogin = props.onLogin;
-  var _useStateLogin = useState(''), username = _useStateLogin[0], setUsername = _useStateLogin[1];
-  var _useStateLogin2 = useState(''), password = _useStateLogin2[0], setPassword = _useStateLogin2[1];
-  var _useStateLogin3 = useState(false), loginError = _useStateLogin3[0], setLoginError = _useStateLogin3[1];
-  var handleLogin = function(e) { e.preventDefault(); if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) { sessionStorage.setItem('adminLoggedIn', 'true'); onLogin(true); setLoginError(false); } else { setLoginError(true); setPassword(''); } };
+  var { onLogin } = props;
+  var [username, setUsername] = useState('');
+  var [password, setPassword] = useState('');
+  var [loginError, setLoginError] = useState(false);
+  var handleLogin = function(e) {
+    e.preventDefault();
+    if (username === ADMIN_CREDENTIALS.username && password === ADMIN_CREDENTIALS.password) {
+      sessionStorage.setItem('adminLoggedIn', 'true');
+      onLogin(true); setLoginError(false);
+    } else { setLoginError(true); setPassword(''); }
+  };
   return (
     <div className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4">
       <div className="max-w-md w-full bg-black/40 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
-        <div className="text-center mb-8"><div className="bg-[#d4af37] p-4 rounded-2xl inline-block mb-4"><Camera size={32} className="text-black" /></div><h1 className="text-2xl font-bold text-white mb-1">Studio Dashboard</h1><p className="text-gray-400 text-sm">Área restrita</p></div>
+        <div className="text-center mb-8">
+          <div className="bg-[#d4af37] p-4 rounded-2xl inline-block mb-4"><Camera size={32} className="text-black" /></div>
+          <h1 className="text-2xl font-bold text-white mb-1">Studio Dashboard</h1>
+          <p className="text-gray-400 text-sm">Área restrita</p>
+        </div>
         <form onSubmit={handleLogin} className="space-y-4">
-          <div><label className="block text-xs font-medium text-gray-400 mb-1.5">Usuário</label><div className="relative"><User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" /><input type="text" value={username} onChange={function(e) { setUsername(e.target.value); }} placeholder="Digite seu usuário" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 pl-10 text-white outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all placeholder:text-gray-600" /></div></div>
-          <div><label className="block text-xs font-medium text-gray-400 mb-1.5">Senha</label><div className="relative"><Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" /><input type="password" value={password} onChange={function(e) { setPassword(e.target.value); }} placeholder="Digite sua senha" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 pl-10 text-white outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all placeholder:text-gray-600" /></div></div>
-          {loginError && <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2"><AlertTriangle size={16} className="text-red-400" /><p className="text-red-400 text-xs">Usuário ou senha inválidos.</p></div>}
-          <button type="submit" className="w-full bg-[#d4af37] hover:bg-[#c4a137] text-black font-bold p-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg mt-6"><LogIn size={18} /> Entrar</button>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5">Usuário</label>
+            <div className="relative">
+              <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input type="text" value={username} onChange={function(e) { setUsername(e.target.value); }} placeholder="Digite seu usuário" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 pl-10 text-white outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all placeholder:text-gray-600" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5">Senha</label>
+            <div className="relative">
+              <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+              <input type="password" value={password} onChange={function(e) { setPassword(e.target.value); }} placeholder="Digite sua senha" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 pl-10 text-white outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent transition-all placeholder:text-gray-600" />
+            </div>
+          </div>
+          {loginError && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2">
+              <AlertTriangle size={16} className="text-red-400" />
+              <p className="text-red-400 text-xs">Usuário ou senha inválidos.</p>
+            </div>
+          )}
+          <button type="submit" className="w-full bg-[#d4af37] hover:bg-[#c4a137] text-black font-bold p-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg mt-6">
+            <LogIn size={18} /> Entrar
+          </button>
         </form>
       </div>
     </div>
   );
 }
 
-export default function App() {
-  var _useState3 = useState(window.location.hash), hash = _useState3[0], setHash = _useState3[1];
-  var _useState4 = useState([]), albums = _useState4[0], setAlbums = _useState4[1];
-  var _useState5 = useState(true), isLoading = _useState5[0], setIsLoading = _useState5[1];
-  var _useStateAuth = useState(function() { return sessionStorage.getItem('adminLoggedIn') === 'true'; }), isAdminLoggedIn = _useStateAuth[0], setIsAdminLoggedIn = _useStateAuth[1];
-  useEffect(function() { var oh = function() { setHash(window.location.hash); }; window.addEventListener('hashchange', oh); return function() { window.removeEventListener('hashchange', oh); }; }, []);
-  useEffect(function() { (async function() { setIsLoading(true); setAlbums(Object.values(await loadAllAlbumsFromSheets())); setIsLoading(false); })(); }, [hash]);
-  if (hash.startsWith('#/album/')) return <AlbumLoader shortId={hash.replace('#/album/', '')} />;
-  if (hash === '#new' || hash.startsWith('#edit_') || hash === '' || hash === '#') { if (!isAdminLoggedIn) { return <LoginScreen onLogin={function(loggedIn) { setIsAdminLoggedIn(loggedIn); }} />; } }
-  if (hash === '#new') return <AdminEditor onSave={function(a) { setAlbums([a, ...albums]); window.location.hash = ''; }} onCancel={function() { window.location.hash = ''; }} />;
-  if (hash.startsWith('#edit_')) { var album = albums.find(function(a) { return a.id === hash.replace('#edit_', ''); }); return <AdminEditor album={album} onSave={function(u) { setAlbums(albums.map(function(a) { return a.id === u.id ? u : a; })); window.location.hash = ''; }} onCancel={function() { window.location.hash = ''; }} />; }
-  return <AdminDashboard albums={albums} setAlbums={setAlbums} isLoading={isLoading} isAdminLoggedIn={isAdminLoggedIn} setIsAdminLoggedIn={setIsAdminLoggedIn} />;
+function RegistreLoginScreen(props) {
+  var { onLogin } = props;
+  var [username, setUsername] = useState('');
+  var [password, setPassword] = useState('');
+  var [loginError, setLoginError] = useState(false);
+  var handleLogin = function(e) {
+    e.preventDefault();
+    if (username === REGISTRE_CREDENTIALS.username && password === REGISTRE_CREDENTIALS.password) {
+      sessionStorage.setItem('registreLoggedIn', 'true');
+      onLogin(true); setLoginError(false);
+    } else { setLoginError(true); setPassword(''); }
+  };
+  return (
+    <div className="min-h-[70vh] flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white border border-gray-200 rounded-3xl p-8 shadow-sm">
+        <div className="text-center mb-8">
+          <div className="bg-blue-600 p-4 rounded-2xl inline-block mb-4"><Camera size={32} className="text-white" /></div>
+          <h1 className="text-2xl font-bold text-gray-900 mb-1">Registre Foto</h1>
+          <p className="text-gray-500 text-sm">Acesso ao painel de gestão</p>
+        </div>
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">Usuário</label>
+            <div className="relative">
+              <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="text" value={username} onChange={function(e) { setUsername(e.target.value); }} placeholder="Digite seu usuário" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 pl-10 text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5">Senha</label>
+            <div className="relative">
+              <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input type="password" value={password} onChange={function(e) { setPassword(e.target.value); }} placeholder="Digite sua senha" className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 pl-10 text-gray-900 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all" />
+            </div>
+          </div>
+          {loginError && (
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-2">
+              <AlertTriangle size={16} className="text-red-500" />
+              <p className="text-red-600 text-xs">Usuário ou senha inválidos.</p>
+            </div>
+          )}
+          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold p-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg mt-6">
+            <LogIn size={18} /> Entrar
+          </button>
+        </form>
+      </div>
+    </div>
+  );
 }
+
+/* ============================================================
+   APP PRINCIPAL — ROTEADOR
+   ============================================================ */
+export default function App() {
+  const [hash, setHash] = useState(window.location.hash);
+  const [albums, setAlbums] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(function() {
+    return sessionStorage.getItem('adminLoggedIn') === 'true';
+  });
+
+  useEffect(function() {
+    var oh = function() { setHash(window.location.hash); };
+    window.addEventListener('hashchange', oh);
+    return function() { window.removeEventListener('hashchange', oh); };
+  }, []);
+
+  useEffect(function() {
+    (async function() {
+      setIsLoading(true);
+      setAlbums(Object.values(await loadAllAlbumsFromSheets()));
+      setIsLoading(false);
+    })();
+  }, [hash]);
+
+  // Rotas públicas de álbum (cliente vê) — NÃO exigem login
+  if (hash.startsWith('#/album/')) return <AlbumLoader shortId={hash.replace('#/album/', '')} />;
+
+  // Rotas administrativas — exigem login de ADMIN (álbuns)
+  var isAdminRoute = hash === '' || hash === '#' || hash === '#new' || hash.startsWith('#edit_') || hash.startsWith('#registre');
+  if (isAdminRoute && !isAdminLoggedIn) {
+    return <LoginScreen onLogin={function(loggedIn) { setIsAdminLoggedIn(loggedIn); }} />;
+  }
+
+  // Rotas de álbum (admin)
+  if (hash === '#new') {
+    return (
+      <AdminShell
+        albums={albums} setAlbums={setAlbums}
+        isAdminLoggedIn={isAdminLoggedIn} setIsAdminLoggedIn={setIsAdminLoggedIn}
+      >
+        <AdminEditor
+          onSave={function(a) { setAlbums([a, ...albums]); window.location.hash = ''; }}
+          onCancel={function() { window.location.hash = ''; }}
+        />
+      </AdminShell>
+    );
+  }
+
+  if (hash.startsWith('#edit_')) {
+    var editId = hash.replace('#edit_', '');
+    var editingAlbum = albums.find(function(a) { return a.id === editId; });
+    return (
+      <AdminShell
+        albums={albums} setAlbums={setAlbums}
+        isAdminLoggedIn={isAdminLoggedIn} setIsAdminLoggedIn={setIsAdminLoggedIn}
+      >
+        <AdminEditor
+          album={editingAlbum}
+          onSave={function(u) {
+            setAlbums(albums.map(function(a) { return a.id === u.id ? u : a; }));
+            window.location.hash = '';
+          }}
+          onCancel={function() { window.location.hash = ''; }}
+        />
+      </AdminShell>
+    );
+  }
+
+  // Rota do Registre Foto (sistema de gestão)
+  if (hash.startsWith('#registre')) {
+    var subroute = hash.replace('#registre', '').replace(/^\//, '') || 'dashboard';
+    return (
+      <AdminShell
+        albums={albums} setAlbums={setAlbums}
+        isAdminLoggedIn={isAdminLoggedIn} setIsAdminLoggedIn={setIsAdminLoggedIn}
+      >
+        <RegistreApp subroute={subroute} />
+      </AdminShell>
+    );
+  }
+
+  // Padrão: painel de álbuns
+  return (
+    <AdminShell
+      albums={albums} setAlbums={setAlbums}
+      isAdminLoggedIn={isAdminLoggedIn} setIsAdminLoggedIn={setIsAdminLoggedIn}
+    >
+      <AdminDashboard albums={albums} setAlbums={setAlbums} isLoading={isLoading} />
+    </AdminShell>
+  );
+}
+
+/* ============================================================
+   SHELL COM MENU UNIFICADO
+   ============================================================ */
+function AdminShell({ albums, setAlbums, isAdminLoggedIn, setIsAdminLoggedIn, children }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [currentHash, setCurrentHash] = useState(window.location.hash);
+
+  useEffect(function() {
+    var oh = function() { setCurrentHash(window.location.hash); };
+    window.addEventListener('hashchange', oh);
+    return function() { window.removeEventListener('hashchange', oh); };
+  }, []);
+
+  var navigate = function(path) {
+    window.location.hash = path;
+    setMobileOpen(false);
+  };
+
+  var isRegistre = currentHash.startsWith('#registre');
+  var subroute = isRegistre ? (currentHash.replace('#registre', '').replace(/^\//, '') || 'dashboard') : '';
+
+  var MenuItem = function({ active, icon: Icon, label, onClick, color }) {
+    return (
+      <button
+        onClick={onClick}
+        className={`flex items-center w-full px-4 py-3 space-x-3 transition-colors text-left ${active ? (color || 'bg-blue-600') + ' text-white' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+      >
+        <Icon size={18} />
+        <span className="font-medium text-sm">{label}</span>
+      </button>
+    );
+  };
+
+  return (
+    <div className="flex h-screen bg-gray-100 overflow-hidden">
+      {/* Sidebar desktop */}
+      <aside className="hidden md:flex w-64 bg-gray-900 text-gray-300 flex-col shadow-xl z-10">
+        <div className="p-5 flex items-center justify-center border-b border-gray-800">
+          <div className="flex items-center gap-2">
+            <div className="bg-[#d4af37] p-1.5 rounded-lg"><Camera size={18} className="text-black" /></div>
+            <span className="text-white font-bold">Registre</span>
+          </div>
+        </div>
+
+        <nav className="flex-1 overflow-y-auto py-3">
+          {/* Seção ÁLBUNS */}
+          <div className="px-3 mb-1"><span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Álbuns</span></div>
+          <MenuItem
+            active={!isRegistre && (currentHash === '' || currentHash === '#' || currentHash === '#')}
+            icon={Images} label="Painel de Álbuns"
+            onClick={function() { navigate('#'); }}
+            color="bg-[#d4af37]"
+          />
+          <MenuItem
+            active={currentHash === '#new'}
+            icon={Plus} label="Novo Álbum"
+            onClick={function() { navigate('#new'); }}
+            color="bg-[#d4af37]"
+          />
+
+          {/* Seção REGISTRE FOTO */}
+          <div className="px-3 mt-4 mb-1"><span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Registre Foto</span></div>
+
+          <MenuItem active={isRegistre && subroute === 'dashboard'} icon={LayoutDashboard} label="Dashboard" onClick={function() { navigate('#registre/dashboard'); }} />
+          <MenuItem active={isRegistre && subroute === 'clientes'} icon={Users} label="Clientes" onClick={function() { navigate('#registre/clientes'); }} />
+          <MenuItem active={isRegistre && subroute === 'agendamentos'} icon={Calendar} label="Agendamentos" onClick={function() { navigate('#registre/agendamentos'); }} />
+          <MenuItem active={isRegistre && subroute === 'vendas'} icon={DollarSign} label="Vendas" onClick={function() { navigate('#registre/vendas'); }} />
+          <MenuItem active={isRegistre && subroute === 'financeiro'} icon={Wallet} label="Financeiro" onClick={function() { navigate('#registre/financeiro'); }} />
+          <MenuItem active={isRegistre && subroute === 'orcamento'} icon={Receipt} label="Orçamento" onClick={function() { navigate('#registre/orcamento'); }} />
+          <MenuItem active={isRegistre && subroute === 'servicos'} icon={Briefcase} label="Serviços" onClick={function() { navigate('#registre/servicos'); }} />
+          <MenuItem active={isRegistre && subroute === 'contrato'} icon={FileText} label="Contratos" onClick={function() { navigate('#registre/contrato'); }} />
+          <MenuItem active={isRegistre && subroute === 'assinatura'} icon={PenTool} label="Assinatura" onClick={function() { navigate('#registre/assinatura'); }} />
+        </nav>
+
+        <div className="p-3 border-t border-gray-800">
+          <button
+            onClick={function() {
+              sessionStorage.removeItem('adminLoggedIn');
+              sessionStorage.removeItem('registreLoggedIn');
+              setIsAdminLoggedIn(false);
+              window.location.hash = '';
+            }}
+            className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded-lg"
+          >
+            <LogOut size={14} /> Sair
+          </button>
+        </div>
+      </aside>
+
+      {/* Header mobile */}
+      <div className="md:hidden fixed top-0 left-0 right-0 bg-gray-900 text-white p-4 z-30 flex justify-between items-center shadow-md">
+        <span className="font-bold">Registre Foto</span>
+        <button onClick={function() { setMobileOpen(!mobileOpen); }}>
+          {mobileOpen ? <X /> : <Menu />}
+        </button>
+      </div>
+
+      {/* Menu mobile */}
+      {mobileOpen && (
+        <div className="fixed inset-0 bg-gray-900 z-20 pt-16 md:hidden overflow-y-auto" onClick={function() { setMobileOpen(false); }}>
+          <nav className="flex flex-col" onClick={function(e) { e.stopPropagation(); }}>
+            <div className="px-3 pt-3 pb-1"><span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Álbuns</span></div>
+            <MenuItem active={!isRegistre} icon={Images} label="Painel de Álbuns" onClick={function() { navigate('#'); }} color="bg-[#d4af37]" />
+            <MenuItem active={currentHash === '#new'} icon={Plus} label="Novo Álbum" onClick={function() { navigate('#new'); }} color="bg-[#d4af37]" />
+            <div className="px-3 mt-4 pb-1"><span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">Registre Foto</span></div>
+            <MenuItem active={isRegistre && subroute === 'dashboard'} icon={LayoutDashboard} label="Dashboard" onClick={function() { navigate('#registre/dashboard'); }} />
+            <MenuItem active={isRegistre && subroute === 'clientes'} icon={Users} label="Clientes" onClick={function() { navigate('#registre/clientes'); }} />
+            <MenuItem active={isRegistre && subroute === 'agendamentos'} icon={Calendar} label="Agendamentos" onClick={function() { navigate('#registre/agendamentos'); }} />
+            <MenuItem active={isRegistre && subroute === 'vendas'} icon={DollarSign} label="Vendas" onClick={function() { navigate('#registre/vendas'); }} />
+            <MenuItem active={isRegistre && subroute === 'financeiro'} icon={Wallet} label="Financeiro" onClick={function() { navigate('#registre/financeiro'); }} />
+            <MenuItem active={isRegistre && subroute === 'orcamento'} icon={Receipt} label="Orçamento" onClick={function() { navigate('#registre/orcamento'); }} />
+            <MenuItem active={isRegistre && subroute === 'servicos'} icon={Briefcase} label="Serviços" onClick={function() { navigate('#registre/servicos'); }} />
+            <MenuItem active={isRegistre && subroute === 'contrato'} icon={FileText} label="Contratos" onClick={function() { navigate('#registre/contrato'); }} />
+            <MenuItem active={isRegistre && subroute === 'assinatura'} icon={PenTool} label="Assinatura" onClick={function() { navigate('#registre/assinatura'); }} />
+            <div className="p-3 border-t border-gray-800 mt-4">
+              <button
+                onClick={function() {
+                  sessionStorage.removeItem('adminLoggedIn');
+                  sessionStorage.removeItem('registreLoggedIn');
+                  setIsAdminLoggedIn(false);
+                  window.location.hash = '';
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold py-2 rounded-lg"
+              >
+                <LogOut size={14} /> Sair
+              </button>
+            </div>
+          </nav>
+        </div>
+      )}
+
+      {/* Main */}
+      <main className="flex-1 overflow-auto pt-16 md:pt-0">
+        {children}
+      </main>
+    </div>
+  );
+}
+
+/* ============================================================
+   REGISTRE APP — Sistema de gestão
+   ============================================================ */
+function RegistreApp({ subroute }) {
+  const [logged, setLogged] = useState(function() {
+    return sessionStorage.getItem('registreLoggedIn') === 'true';
+  });
+
+  if (!logged) {
+    return <div className="p-4 md:p-8"><RegistreLoginScreen onLogin={setLogged} /></div>;
+  }
+
+  return <RegistreInner subroute={subroute} />;
+}
+
+function RegistreInner({ subroute }) {
+  const [clientes, setClientes] = useState([]);
+  const [agendamentos, setAgendamentos] = useState([]);
+  const [vendas, setVendas] = useState([]);
+  const [catalogo, setCatalogo] = useState([]);
+  const [orcamentos, setOrcamentos] = useState([]);
+  const [dashboardStats, setDashboardStats] = useState({ revenue: 0, receivable: 0, events: 0, sales: 0, budgets: 0 });
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [notification, setNotification] = useState(null);
+
+  const showNotification = useCallback((msg, type) => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 4000);
+  }, []);
+
+  const refreshAll = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [cl, ag, ve, cat, orc] = await Promise.all([
+        registreFetchData('Clientes'),
+        registreFetchData('Agendamentos'),
+        registreFetchData('Vendas'),
+        registreFetchData('ServicosProdutos'),
+        registreFetchData('Orcamentos')
+      ]);
+      setClientes(cl); setAgendamentos(ag); setVendas(ve);
+      setCatalogo(cat); setOrcamentos(orc);
+
+      const totalVendido = ve.reduce((a, c) => a + toNumber(c.valor_total), 0);
+      const totalRecebido = ve.reduce((a, c) => a + toNumber(c.valor_pago), 0);
+
+      setDashboardStats({
+        revenue: totalVendido,
+        receivable: Math.max(0, totalVendido - totalRecebido),
+        events: ag.length,
+        sales: ve.length,
+        budgets: orc.length,
+      });
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    refreshAll().finally(() => setInitialLoading(false));
+  }, [refreshAll]);
+
+  const sendData = async (sheet, data) => {
+    setLoading(true);
+    const r = await registreSendSingle(sheet, data, 'create');
+    if (r.ok) { showNotification("Salvo com sucesso!", "success"); await refreshAll(); }
+    else { showNotification(`Erro: ${r.error || 'falha ao salvar'}`, "error"); }
+    setLoading(false);
+  };
+
+  const updateData = async (sheet, data) => {
+    setLoading(true);
+    const r = await registreSendSingle(sheet, data, 'update');
+    if (r.ok) { showNotification("Atualizado com sucesso!", "success"); await refreshAll(); }
+    else { showNotification(`Erro: ${r.error || 'falha ao atualizar'}`, "error"); }
+    setLoading(false);
+  };
+
+  const deleteData = async (sheet, id) => {
+    if (!window.confirm("Tem certeza que deseja excluir?")) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`${REGISTRE_API_URL}?action=delete&sheet=${encodeURIComponent(sheet)}&id=${encodeURIComponent(id)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showNotification("Excluído.", "success");
+      await refreshAll();
+    } catch (e) {
+      showNotification(`Erro ao excluir: ${e.message}`, "error");
+    } finally { setLoading(false); }
+  };
+
+  const LocationLink = ({ localizacao }) => {
+    if (!localizacao) return <span>-</span>;
+    const isLink = localizacao.trim().startsWith('http');
+    const href = isLink ? localizacao : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(localizacao)}`;
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline inline-flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+        {isLink ? 'Abrir Link' : localizacao} <MapPin size={12} />
+      </a>
+    );
+  };
+
+  const views = {
+    dashboard: <RegistreDashboard stats={dashboardStats} agendamentos={agendamentos} />,
+    clientes: <RegistreClientes clientes={clientes} onSave={sendData} onDelete={deleteData} />,
+    agendamentos: <RegistreAgendamentos agendamentos={agendamentos} clientes={clientes} catalogo={catalogo} onSave={sendData} onDelete={deleteData} />,
+    vendas: <RegistreVendas vendas={vendas} clientes={clientes} catalogo={catalogo} onSave={sendData} onRefresh={refreshAll} showNotification={showNotification} />,
+    financeiro: <RegistreFinanceiro vendas={vendas} stats={dashboardStats} onUpdate={updateData} />,
+    orcamento: <RegistreOrcamento />,
+    servicos: <RegistreServicos catalogo={catalogo} onSave={sendData} onDelete={deleteData} />,
+    contrato: <RegistreContrato />,
+    assinatura: <RegistreAssinatura />,
+  };
+
+  return (
+    <div className="p-4 md:p-8 relative min-h-full">
+      {loading && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 backdrop-blur-sm">
+          <div className="flex flex-col items-center">
+            <Loader2 size={48} className="animate-spin text-white" />
+            <span className="text-white font-bold mt-3 tracking-wider">CARREGANDO...</span>
+          </div>
+        </div>
+      )}
+      {notification && (
+        <div className={`fixed top-4 right-4 px-4 py-2 rounded shadow text-white z-50 ${notification.type === 'error' ? 'bg-red-500' : 'bg-green-500'}`}>
+          {notification.msg}
+        </div>
+      )}
+      {initialLoading ? (
+        <div className="text-center py-20 text-gray-400">
+          <Loader2 size={32} className="animate-spin mx-auto mb-2" />
+          <p>Carregando dados iniciais...</p>
+        </div>
+      ) : (views[subroute] || views.dashboard)}
+    </div>
+  );
+}
+
+/* ============================================================
+   VIEWS REGISTRE FOTO
+   ============================================================ */
+function RegistreDashboard({ stats, agendamentos }) {
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-gray-800">Dashboard</h2>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-green-500">
+          <p className="text-xs text-gray-500">Faturamento</p>
+          <p className="text-xl font-bold">{formatBRL(stats.revenue)}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-orange-500">
+          <p className="text-xs text-gray-500">A Receber</p>
+          <p className="text-xl font-bold text-orange-600">{formatBRL(stats.receivable)}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-blue-500">
+          <p className="text-xs text-gray-500">Agendamentos</p>
+          <p className="text-xl font-bold">{stats.events}</p>
+        </div>
+        <div className="bg-white p-4 rounded-lg shadow border-l-4 border-purple-500">
+          <p className="text-xs text-gray-500">Vendas</p>
+          <p className="text-xl font-bold">{stats.sales}</p>
+        </div>
+      </div>
+      <div className="bg-white rounded-lg shadow p-6">
+        <h3 className="font-bold mb-4">Próximos Eventos</h3>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-50">
+              <tr><th className="p-3">Data</th><th className="p-3">Cliente</th><th className="p-3">Serviço</th></tr>
+            </thead>
+            <tbody>
+              {agendamentos.slice(0, 5).map(ag => (
+                <tr key={ag.id} className="border-t">
+                  <td className="p-3">{formatDateBR(ag.data)}</td>
+                  <td className="p-3">{ag.cliente_nome}</td>
+                  <td className="p-3">{ag.servico_nome}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RegistreClientes({ clientes, onSave, onDelete }) {
+  const [novo, setNovo] = useState({ nome: '', email: '', telefone: '', endereco: '', cpf: '' });
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave('Clientes', novo);
+    setNovo({ nome: '', email: '', telefone: '', endereco: '', cpf: '' });
+  };
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Clientes</h2>
+      <div className="bg-white p-6 rounded shadow">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input required placeholder="Nome" className="border p-2 rounded" value={novo.nome} onChange={e => setNovo({ ...novo, nome: e.target.value })} />
+          <input placeholder="Email" className="border p-2 rounded" value={novo.email} onChange={e => setNovo({ ...novo, email: e.target.value })} />
+          <input placeholder="Telefone" className="border p-2 rounded" value={novo.telefone} onChange={e => setNovo({ ...novo, telefone: e.target.value })} />
+          <input placeholder="Endereço" className="border p-2 rounded" value={novo.endereco} onChange={e => setNovo({ ...novo, endereco: e.target.value })} />
+          <input placeholder="CPF" className="border p-2 rounded" value={novo.cpf} onChange={e => setNovo({ ...novo, cpf: e.target.value })} />
+          <button className="bg-blue-600 text-white p-2 rounded font-bold hover:bg-blue-700">Salvar</button>
+        </form>
+      </div>
+      <div className="bg-white rounded shadow overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-100">
+            <tr><th className="p-3 text-left">Nome</th><th className="p-3 text-left">Email</th><th className="p-3 text-left">Ações</th></tr>
+          </thead>
+          <tbody>
+            {clientes.map(c => (
+              <tr key={c.id} className="border-t">
+                <td className="p-3">{c.nome}</td>
+                <td className="p-3">{c.email}</td>
+                <td className="p-3">
+                  <button onClick={() => onDelete('Clientes', c.id)} className="text-red-500 hover:text-red-700"><Trash2 size={16} /></button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RegistreServicos({ catalogo, onSave, onDelete }) {
+  const [item, setItem] = useState({ tipo: 'Serviço', nome: '', descricao: '', valor: '', unidade_cobranca: 'Hora', duracao_padrao: '' });
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    onSave('ServicosProdutos', item);
+    setItem({ tipo: 'Serviço', nome: '', descricao: '', valor: '', unidade_cobranca: 'Hora', duracao_padrao: '' });
+  };
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-gray-800">Produtos e Serviços</h2>
+      <div className="bg-white p-6 rounded-lg shadow">
+        <h3 className="font-bold mb-4 text-purple-600 flex items-center"><Plus size={18} className="mr-2" /> Novo Item</h3>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="flex gap-4">
+            <label className="flex items-center"><input type="radio" name="tipo" value="Serviço" checked={item.tipo === 'Serviço'} onChange={() => setItem({ ...item, tipo: 'Serviço' })} className="mr-2" /> Serviço</label>
+            <label className="flex items-center"><input type="radio" name="tipo" value="Produto" checked={item.tipo === 'Produto'} onChange={() => setItem({ ...item, tipo: 'Produto' })} className="mr-2" /> Produto</label>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <input required placeholder="Nome do Item" className="border p-2 rounded" value={item.nome} onChange={e => setItem({ ...item, nome: e.target.value })} />
+            <input required type="number" step="0.01" placeholder="Valor (R$)" className="border p-2 rounded" value={item.valor} onChange={e => setItem({ ...item, valor: e.target.value })} />
+            {item.tipo === 'Serviço' && (
+              <>
+                <select className="border p-2 rounded" value={item.unidade_cobranca} onChange={e => setItem({ ...item, unidade_cobranca: e.target.value })}>
+                  <option value="Hora">Por Hora</option>
+                  <option value="Evento">Por Evento (Fixo)</option>
+                </select>
+                <input type="number" step="0.5" placeholder="Duração Padrão (Horas)" className="border p-2 rounded" value={item.duracao_padrao} onChange={e => setItem({ ...item, duracao_padrao: e.target.value })} />
+              </>
+            )}
+            <input placeholder="Descrição curta" className="border p-2 rounded md:col-span-2" value={item.descricao} onChange={e => setItem({ ...item, descricao: e.target.value })} />
+          </div>
+          <button className="bg-purple-600 text-white px-4 py-2 rounded w-full hover:bg-purple-700">Salvar Item</button>
+        </form>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {catalogo.map(i => (
+          <div key={i.id} className="bg-white p-4 rounded shadow relative border-t-4 border-purple-400">
+            <span className="text-xs font-bold uppercase text-gray-400 mb-1 block">{i.tipo}</span>
+            <h4 className="font-bold text-lg">{i.nome}</h4>
+            <p className="text-sm text-gray-600 mb-2">{i.descricao}</p>
+            <div className="flex justify-between items-end mt-4">
+              <div>
+                <p className="font-bold text-green-600 text-xl">{formatBRL(i.valor)}</p>
+                {i.tipo === 'Serviço' && <p className="text-xs text-gray-500">Cobrado por {i.unidade_cobranca} {i.duracao_padrao ? `(${i.duracao_padrao}h)` : ''}</p>}
+              </div>
+              <button onClick={() => onDelete('ServicosProdutos', i.id)} className="text-red-400 hover:text-red-600"><Trash2 size={18} /></button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RegistreAgendamentos({ agendamentos, clientes, catalogo, onSave, onDelete }) {
+  const [novoAg, setNovoAg] = useState({ cliente_nome: '', data: '', hora: '', localizacao: '', servico_nome: '', valor: '', duracao: '' });
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    let dataF = novoAg.data;
+    if (novoAg.data) dataF += `T${novoAg.hora || '00:00'}:00`;
+    const payload = { ...novoAg, data: dataF };
+    delete payload.hora;
+    onSave('Agendamentos', payload);
+    setNovoAg({ cliente_nome: '', data: '', hora: '', localizacao: '', servico_nome: '', valor: '', duracao: '' });
+  };
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Agendamentos</h2>
+      <div className="bg-white p-6 rounded shadow">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Cliente</label>
+            <select className="border p-2 rounded w-full" value={novoAg.cliente_nome} onChange={e => setNovoAg({ ...novoAg, cliente_nome: e.target.value })} required>
+              <option value="">Selecione...</option>
+              {clientes.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Serviço</label>
+            <select className="border p-2 rounded w-full" value={novoAg.servico_nome} onChange={e => {
+              const s = catalogo.find(x => x.nome === e.target.value);
+              setNovoAg({ ...novoAg, servico_nome: e.target.value, valor: s ? s.valor : '', duracao: s?.duracao_padrao || '' });
+            }} required>
+              <option value="">Selecione...</option>
+              {catalogo.filter(i => i.tipo === 'Serviço').map(s => <option key={s.id} value={s.nome}>{s.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Data</label>
+            <input type="date" className="border p-2 rounded w-full" value={novoAg.data} onChange={e => setNovoAg({ ...novoAg, data: e.target.value })} required />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Hora Início</label>
+            <input type="time" className="border p-2 rounded w-full" value={novoAg.hora} onChange={e => setNovoAg({ ...novoAg, hora: e.target.value })} />
+          </div>
+          <div className="col-span-full">
+            <label className="block text-sm font-bold text-gray-600 mb-1">Localização</label>
+            <input placeholder="Local do Evento" className="border p-2 rounded w-full" value={novoAg.localizacao} onChange={e => setNovoAg({ ...novoAg, localizacao: e.target.value })} required />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Duração (h)</label>
+            <input placeholder="Ex: 4" type="number" step="0.5" className="border p-2 rounded w-full" value={novoAg.duracao} onChange={e => setNovoAg({ ...novoAg, duracao: e.target.value })} required />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Valor (R$)</label>
+            <input placeholder="0.00" type="number" className="border p-2 rounded w-full" value={novoAg.valor} onChange={e => setNovoAg({ ...novoAg, valor: e.target.value })} />
+          </div>
+          <button className="bg-blue-600 text-white p-2 rounded font-bold md:col-span-2 hover:bg-blue-700">Agendar</button>
+        </form>
+      </div>
+      <div className="space-y-2">
+        {agendamentos.map(ag => (
+          <div key={ag.id} className="bg-white p-4 rounded shadow border-l-4 border-blue-300 flex justify-between items-center">
+            <div>
+              <p className="font-bold text-lg">{ag.cliente_nome}</p>
+              <p className="text-sm text-gray-600">{formatarDataHora(ag.data)} — {ag.localizacao}</p>
+              <p className="text-xs text-gray-500 mt-1">{ag.servico_nome} {ag.duracao ? `(${ag.duracao}h)` : ''}</p>
+            </div>
+            <div className="text-right">
+              <p className="font-bold text-green-600 text-lg">{formatBRL(ag.valor)}</p>
+              <button onClick={() => onDelete('Agendamentos', ag.id)} className="text-red-400 text-xs hover:underline">Excluir</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RegistreVendas({ vendas, clientes, catalogo, onSave, onRefresh, showNotification }) {
+  const [novaVenda, setNovaVenda] = useState({
+    cliente_nome: '', item_vendido: '', valor_total: '', duracao: '', localizacao: '',
+    data_venda: new Date().toISOString().split('T')[0], hora: '',
+    status_pagamento: 'Pago', valor_entrada: ''
+  });
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    let valPago = novaVenda.status_pagamento === 'Pago' ? novaVenda.valor_total
+      : (novaVenda.status_pagamento === 'Parcial' ? novaVenda.valor_entrada : 0);
+    let dF = novaVenda.data_venda;
+    if (novaVenda.data_venda) dF += `T${novaVenda.hora || '00:00'}:00`;
+    const payload = { ...novaVenda, data_venda: dF, valor_pago: valPago };
+    delete payload.hora; delete payload.valor_entrada;
+    await registreSendSingle('Vendas', payload, 'create');
+    if (catalogo.find(i => i.nome === novaVenda.item_vendido)?.tipo === 'Serviço') {
+      await registreSendSingle('Agendamentos', {
+        cliente_nome: novaVenda.cliente_nome, data: dF, localizacao: novaVenda.localizacao,
+        servico_nome: novaVenda.item_vendido, valor: novaVenda.valor_total,
+        duracao: novaVenda.duracao, status: 'Confirmado Venda'
+      }, 'create');
+    }
+    showNotification("Venda Registrada!", "success");
+    await onRefresh();
+    setNovaVenda({
+      cliente_nome: '', item_vendido: '', valor_total: '', duracao: '', localizacao: '',
+      data_venda: new Date().toISOString().split('T')[0], hora: '',
+      status_pagamento: 'Pago', valor_entrada: ''
+    });
+  };
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold">Nova Venda</h2>
+      <div className="bg-white p-6 rounded shadow">
+        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Cliente</label>
+            <select className="border p-2 rounded w-full" value={novaVenda.cliente_nome} onChange={e => setNovaVenda({ ...novaVenda, cliente_nome: e.target.value })} required>
+              <option value="">Selecione...</option>
+              {clientes.map(c => <option key={c.id} value={c.nome}>{c.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Item Vendido</label>
+            <select className="border p-2 rounded w-full" value={novaVenda.item_vendido} onChange={e => {
+              const i = catalogo.find(x => x.nome === e.target.value);
+              setNovaVenda({ ...novaVenda, item_vendido: e.target.value, valor_total: i ? i.valor : '', duracao: i?.duracao_padrao || '' });
+            }} required>
+              <option value="">Selecione...</option>
+              {catalogo.map(i => <option key={i.id} value={i.nome}>{i.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Data da Venda</label>
+            <input type="date" className="border p-2 rounded w-full" value={novaVenda.data_venda} onChange={e => setNovaVenda({ ...novaVenda, data_venda: e.target.value })} required />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Hora Início</label>
+            <input type="time" className="border p-2 rounded w-full" value={novaVenda.hora} onChange={e => setNovaVenda({ ...novaVenda, hora: e.target.value })} />
+          </div>
+          <div className="md:col-span-2">
+            <label className="block text-sm font-bold text-gray-600 mb-1">Localização</label>
+            <input placeholder="Local do Evento" className="border p-2 rounded w-full" value={novaVenda.localizacao} onChange={e => setNovaVenda({ ...novaVenda, localizacao: e.target.value })} required />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Valor Total (R$)</label>
+            <input placeholder="0.00" type="number" className="border p-2 rounded w-full" value={novaVenda.valor_total} onChange={e => setNovaVenda({ ...novaVenda, valor_total: e.target.value })} required />
+          </div>
+          <div>
+            <label className="block text-sm font-bold text-gray-600 mb-1">Duração (h)</label>
+            <input placeholder="Ex: 4" type="number" step="0.5" className="border p-2 rounded w-full" value={novaVenda.duracao} onChange={e => setNovaVenda({ ...novaVenda, duracao: e.target.value })} />
+          </div>
+          <div className="bg-gray-50 p-3 rounded border md:col-span-2 grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-500 mb-1">Status Pagamento</label>
+              <select className="border p-2 rounded w-full" value={novaVenda.status_pagamento} onChange={e => setNovaVenda({ ...novaVenda, status_pagamento: e.target.value })}>
+                <option value="Pago">Totalmente Pago</option>
+                <option value="Parcial">Entrada + Restante</option>
+                <option value="Pendente">Pendente</option>
+              </select>
+            </div>
+            {novaVenda.status_pagamento === 'Parcial' && (
+              <div>
+                <label className="block text-xs font-bold text-blue-500 mb-1">Valor Entrada (R$)</label>
+                <input type="number" className="border p-2 rounded w-full border-blue-300" value={novaVenda.valor_entrada} onChange={e => setNovaVenda({ ...novaVenda, valor_entrada: e.target.value })} />
+              </div>
+            )}
+          </div>
+          <button className="bg-green-600 text-white p-2 rounded font-bold md:col-span-2 hover:bg-green-700">Registrar Venda</button>
+        </form>
+      </div>
+      <div className="bg-white rounded shadow overflow-hidden">
+        <table className="w-full text-sm">
+          <thead className="bg-gray-100">
+            <tr><th className="p-3 text-left">Data</th><th className="p-3 text-left">Cliente</th><th className="p-3 text-left">Status</th><th className="p-3 text-right">Total</th></tr>
+          </thead>
+          <tbody>
+            {vendas.map(v => (
+              <tr key={v.id} className="border-t">
+                <td className="p-3">{formatarDataHora(v.data_venda)}</td>
+                <td className="p-3">{v.cliente_nome}</td>
+                <td className="p-3">{v.status_pagamento}</td>
+                <td className="p-3 text-right text-green-600 font-bold">{formatBRL(v.valor_total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function RegistreFinanceiro({ vendas, stats, onUpdate }) {
+  const [editItem, setEditItem] = useState(null);
+  const handleSave = (e) => {
+    e.preventDefault();
+    onUpdate('Vendas', {
+      id: editItem.id, valor_total: editItem.valor_total,
+      valor_pago: editItem.valor_pago, status_pagamento: editItem.status_pagamento
+    });
+    setEditItem(null);
+  };
+  return (
+    <div className="space-y-6 relative">
+      <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-2"><Wallet className="text-blue-600" /> Controle Financeiro</h2>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white p-4 rounded shadow border-l-4 border-green-500">
+          <p className="text-sm text-gray-500">Total Vendido</p>
+          <p className="text-2xl font-bold">{formatBRL(stats.revenue)}</p>
+        </div>
+        <div className="bg-white p-4 rounded shadow border-l-4 border-blue-500">
+          <p className="text-sm text-gray-500">Recebido (Caixa)</p>
+          <p className="text-2xl font-bold">{formatBRL(stats.revenue - stats.receivable)}</p>
+        </div>
+        <div className="bg-white p-4 rounded shadow border-l-4 border-orange-500">
+          <p className="text-sm text-gray-500">A Receber</p>
+          <p className="text-2xl font-bold text-orange-600">{formatBRL(stats.receivable)}</p>
+        </div>
+      </div>
+      <div className="bg-white rounded shadow overflow-hidden">
+        <div className="p-4 border-b bg-gray-50 font-bold text-gray-700">Relatório de Recebimentos</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="p-3">Cliente</th>
+                <th className="p-3 hidden sm:table-cell">Data</th>
+                <th className="p-3">Total</th>
+                <th className="p-3">Pago</th>
+                <th className="p-3">Falta</th>
+                <th className="p-3 text-center">Status</th>
+                <th className="p-3 text-center">Ação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {vendas.map(v => {
+                const total = toNumber(v.valor_total);
+                const pago = toNumber(v.valor_pago);
+                const falta = Math.max(0, total - pago);
+                return (
+                  <tr key={v.id} className="hover:bg-gray-50">
+                    <td className="p-3 font-medium">{v.cliente_nome}</td>
+                    <td className="p-3 hidden sm:table-cell">{formatDateBR(v.data_venda)}</td>
+                    <td className="p-3">{formatBRL(total)}</td>
+                    <td className="p-3 text-blue-600 font-bold">{formatBRL(pago)}</td>
+                    <td className="p-3 font-bold text-orange-600">{falta > 0.01 ? formatBRL(falta) : '-'}</td>
+                    <td className="p-3 text-center">
+                      <span className={`text-xs px-2 py-1 rounded-full font-bold ${falta <= 0.01 ? 'bg-green-100 text-green-800' : pago > 0 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
+                        {falta <= 0.01 ? 'Quitado' : pago > 0 ? 'Parcial' : 'Pendente'}
+                      </span>
+                    </td>
+                    <td className="p-3 text-center">
+                      <button onClick={() => setEditItem({ ...v, valor_total: total, valor_pago: pago })} className="bg-blue-100 text-blue-600 p-2 rounded hover:bg-blue-200" title="Editar Pagamento"><Edit size={16} /></button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      {editItem && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6">
+            <h3 className="text-xl font-bold mb-4 text-gray-800 border-b pb-2">Atualizar Pagamento</h3>
+            <p className="text-sm text-gray-500 mb-4">Cliente: <strong>{editItem.cliente_nome}</strong></p>
+            <form onSubmit={handleSave} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Valor Total (R$)</label>
+                <input type="number" step="0.01" className="w-full border p-2 rounded" value={editItem.valor_total} onChange={e => setEditItem({ ...editItem, valor_total: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Valor Já Pago (R$)</label>
+                <input type="number" step="0.01" className="w-full border p-2 rounded" value={editItem.valor_pago} onChange={e => setEditItem({ ...editItem, valor_pago: e.target.value })} />
+              </div>
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-1">Status</label>
+                <select className="w-full border p-2 rounded" value={editItem.status_pagamento} onChange={e => setEditItem({ ...editItem, status_pagamento: e.target.value })}>
+                  <option value="Pendente">Pendente</option>
+                  <option value="Parcial">Parcial</option>
+                  <option value="Pago">Pago / Quitado</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 mt-6">
+                <button type="button" onClick={() => setEditItem(null)} className="px-4 py-2 text-gray-600 bg-gray-200 rounded">Cancelar</button>
+                <button type="submit" className="px-4 py-2 text-white bg-blue-600 rounded">Salvar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RegistreOrcamento() {
+  return (
+    <div className="w-full">
+      <h2 className="text-2xl font-bold text-gray-800 mb-4">Gerador de Orçamento</h2>
+      <div className="bg-white rounded-lg shadow p-4 text-center text-gray-500">
+        <FileText size={40} className="mx-auto mb-2 text-gray-300" />
+        <p className="text-sm">Módulo de orçamento disponível.</p>
+        <p className="text-xs mt-1 text-gray-400">Se quiser, posso portar o gerador completo (iframe) numa próxima etapa.</p>
+      </div>
+    </div>
+  );
+}
+
+function RegistreContrato() {
+  return (
+    <div className="w-full">
+      <h2 className="text-2xl font-bold text-gray-800 mb-4">Gerador de Contrato</h2>
+      <div className="bg-white rounded-lg shadow p-4 text-center text-gray-500">
+        <FileText size={40} className="mx-auto mb-2 text-gray-300" />
+        <p className="text-sm">Módulo de contrato disponível.</p>
+        <p className="text-xs mt-1 text-gray-400">Se quiser, posso portar o gerador completo (iframe) numa próxima etapa.</p>
+      </div>
+    </div>
+  );
+}
+
+function RegistreAssinatura() {
+  const abrirAssinador = () => {
+    window.open("https://sso.acesso.gov.br/login?client_id=assinador.iti.br&authorization_id=19aa2bbafd2", 'AssinadorGovBr', "width=1000,height=700");
+  };
+  return (
+    <div className="space-y-6 text-center">
+      <h2 className="text-2xl font-bold">Assinatura Digital</h2>
+      <div className="bg-white p-8 rounded shadow border flex flex-col items-center">
+        <div className="bg-blue-50 rounded-full p-6 mb-6">
+          <img src="https://www.gov.br/++theme++br.gov.plone/++theme++br.gov.plone.estrutura/img/govbr-logo-large.png" className="h-12 object-contain" onError={(e) => { e.target.src = "https://upload.wikimedia.org/wikipedia/commons/e/ee/Gov.br_logo.svg"; }} alt="Gov.br" />
+        </div>
+        <h3 className="text-xl font-bold mb-2">Acesso Gov.br</h3>
+        <p className="text-gray-600 mb-6">Acesse o portal oficial para assinar seus documentos com segurança.</p>
+        <button onClick={abrirAssinador} className="bg-[#1351B4] text-white px-8 py-4 rounded font-bold shadow-lg hover:bg-blue-800 flex items-center gap-2">
+          Acessar Assinador Digital <ExternalLink size={20} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   COMPONENTES DE ÁLBUM
+   ============================================================ */
 
 function ClientApp(props) {
   var album = props.album;
@@ -315,59 +1449,39 @@ function ClientApp(props) {
         hasStartedPlaying = true;
         setShowVideoOverlay(false);
         setShowBuffering(false);
-        if (bufferCheckInterval) {
-          clearInterval(bufferCheckInterval);
-          bufferCheckInterval = null;
-        }
-        if (bufferTimeoutRef.current) {
-          clearTimeout(bufferTimeoutRef.current);
-          bufferTimeoutRef.current = null;
-        }
+        if (bufferCheckInterval) { clearInterval(bufferCheckInterval); bufferCheckInterval = null; }
+        if (bufferTimeoutRef.current) { clearTimeout(bufferTimeoutRef.current); bufferTimeoutRef.current = null; }
       };
       
       var handleWaiting = function() {
         if (hasStartedPlaying) {
           if (bufferTimeoutRef.current) clearTimeout(bufferTimeoutRef.current);
-          bufferTimeoutRef.current = setTimeout(function() {
-            setShowBuffering(true);
-          }, 300);
+          bufferTimeoutRef.current = setTimeout(function() { setShowBuffering(true); }, 300);
         }
       };
       
       var handleCanPlay = function() {
-        if (bufferTimeoutRef.current) {
-          clearTimeout(bufferTimeoutRef.current);
-          bufferTimeoutRef.current = null;
-        }
+        if (bufferTimeoutRef.current) { clearTimeout(bufferTimeoutRef.current); bufferTimeoutRef.current = null; }
         setShowBuffering(false);
-        if (hasStartedPlaying) {
-          setShowVideoOverlay(false);
-        }
+        if (hasStartedPlaying) { setShowVideoOverlay(false); }
       };
       
       var handleStalled = function() {
         if (hasStartedPlaying) {
           if (bufferTimeoutRef.current) clearTimeout(bufferTimeoutRef.current);
-          bufferTimeoutRef.current = setTimeout(function() {
-            setShowBuffering(true);
-          }, 500);
+          bufferTimeoutRef.current = setTimeout(function() { setShowBuffering(true); }, 500);
         }
       };
       
       var handleCanPlayThrough = function() {
-        if (bufferTimeoutRef.current) {
-          clearTimeout(bufferTimeoutRef.current);
-          bufferTimeoutRef.current = null;
-        }
+        if (bufferTimeoutRef.current) { clearTimeout(bufferTimeoutRef.current); bufferTimeoutRef.current = null; }
         setShowBuffering(false);
         setShowVideoOverlay(false);
       };
       
       var checkBufferProgress = function() {
         if (video && hasStartedPlaying) {
-          if (video.paused && !video.ended && video.readyState < 3 && video.currentTime > 0) {
-            setShowBuffering(true);
-          }
+          if (video.paused && !video.ended && video.readyState < 3 && video.currentTime > 0) { setShowBuffering(true); }
         }
       };
       
@@ -379,9 +1493,7 @@ function ClientApp(props) {
       
       bufferCheckInterval = setInterval(checkBufferProgress, 2000);
       
-      video.play().catch(function() {
-        setShowVideoOverlay(true);
-      });
+      video.play().catch(function() { setShowVideoOverlay(true); });
       
       return function() {
         video.removeEventListener('playing', handlePlaying);
@@ -397,9 +1509,7 @@ function ClientApp(props) {
   
   useEffect(function() {
     if (showIntroVideo && showVideoOverlay) {
-      var timer = setTimeout(function() { 
-        setShowVideoOverlay(false); 
-      }, 5000);
+      var timer = setTimeout(function() { setShowVideoOverlay(false); }, 5000);
       return function() { clearTimeout(timer); };
     }
   }, [showIntroVideo, showVideoOverlay]);
@@ -459,35 +1569,10 @@ function ClientApp(props) {
             <video ref={videoRef} src={videoSrc} autoPlay playsInline muted={false} preload="auto" onEnded={handleVideoEnded} onError={handleVideoError} style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
             
             {showBuffering && (
-              <div style={{ 
-                position: 'absolute', 
-                top: '16px', 
-                left: '50%', 
-                transform: 'translateX(-50%)', 
-                zIndex: 20, 
-                animation: 'slideDown 0.3s ease-out',
-                background: 'rgba(0,0,0,0.75)',
-                backdropFilter: 'blur(12px)',
-                borderRadius: '12px',
-                padding: '8px 16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '10px',
-                border: '1px solid rgba(255,255,255,0.08)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
-                maxWidth: '90%'
-              }}>
+              <div style={{ position: 'absolute', top: '16px', left: '50%', transform: 'translateX(-50%)', zIndex: 20, animation: 'slideDown 0.3s ease-out', background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(12px)', borderRadius: '12px', padding: '8px 16px', display: 'flex', alignItems: 'center', gap: '10px', border: '1px solid rgba(255,255,255,0.08)', boxShadow: '0 8px 32px rgba(0,0,0,0.4)', maxWidth: '90%' }}>
                 <Loader2 size={16} className="animate-spin" style={{ color: '#d4af37' }} />
-                <span style={{ color: 'white', fontSize: '12px', fontWeight: 500, letterSpacing: '0.3px' }}>
-                  Carregando vídeo...
-                </span>
-                <span style={{ 
-                  color: 'rgba(255,255,255,0.3)', 
-                  fontSize: '10px', 
-                  marginLeft: '4px'
-                }}>
-                  aguarde
-                </span>
+                <span style={{ color: 'white', fontSize: '12px', fontWeight: 500 }}>Carregando vídeo...</span>
+                <span style={{ color: 'rgba(255,255,255,0.3)', fontSize: '10px', marginLeft: '4px' }}>aguarde</span>
               </div>
             )}
             
@@ -504,7 +1589,9 @@ function ClientApp(props) {
             )}
           </div>
         </div>
-        <button onClick={function(e) { e.stopPropagation(); handleSkipVideo(); }} style={{ position: 'fixed', bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', color: 'white', padding: '0.7rem 1.3rem', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}><SkipForward size={16} /> Pular Vídeo</button>
+        <button onClick={function(e) { e.stopPropagation(); handleSkipVideo(); }} style={{ position: 'fixed', bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))', left: '50%', transform: 'translateX(-50%)', zIndex: 10000, background: 'rgba(255,255,255,0.1)', backdropFilter: 'blur(12px)', color: 'white', padding: '0.7rem 1.3rem', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid rgba(255,255,255,0.3)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 500 }}>
+          <SkipForward size={16} /> Pular Vídeo
+        </button>
       </div>
     );
   }
@@ -513,7 +1600,14 @@ function ClientApp(props) {
     return (
       <div className="min-h-screen bg-[#0a0a0a] text-white flex items-center justify-center p-4 relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-b from-red-900/20 via-[#0a0a0a] to-[#0a0a0a] z-[1]" />
-        <div className="max-w-md w-full bg-black/60 backdrop-blur-xl border border-red-500/30 rounded-3xl p-8 text-center shadow-2xl relative z-10"><div className="w-20 h-20 rounded-full bg-red-500/20 border-2 border-red-500/50 flex items-center justify-center mx-auto mb-6"><AlertTriangle size={40} className="text-red-400" /></div><h2 className="text-2xl font-bold tracking-tight mb-2 text-white">Album Expirado</h2><p className="text-gray-400 text-sm mb-2">Este album nao esta mais disponivel.</p>{expiryDateFormatted && <p className="text-red-400/80 text-xs mb-6">Data de expiracao: {expiryDateFormatted}</p>}<div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6"><p className="text-gray-300 text-sm">Entre em contato com o fotografo.</p></div>{hasWhatsApp ? <button onClick={handleWhatsAppContact} className="w-full bg-[#25D366] hover:bg-[#20b859] text-white font-bold p-3 rounded-xl flex items-center justify-center gap-2 shadow-lg"><MessageCircle size={20} />Falar com o Fotografo</button> : <div className="text-gray-500 text-sm">WhatsApp nao disponivel.</div>}</div>
+        <div className="max-w-md w-full bg-black/60 backdrop-blur-xl border border-red-500/30 rounded-3xl p-8 text-center shadow-2xl relative z-10">
+          <div className="w-20 h-20 rounded-full bg-red-500/20 border-2 border-red-500/50 flex items-center justify-center mx-auto mb-6"><AlertTriangle size={40} className="text-red-400" /></div>
+          <h2 className="text-2xl font-bold tracking-tight mb-2 text-white">Album Expirado</h2>
+          <p className="text-gray-400 text-sm mb-2">Este album nao esta mais disponivel.</p>
+          {expiryDateFormatted && <p className="text-red-400/80 text-xs mb-6">Data de expiracao: {expiryDateFormatted}</p>}
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-4 mb-6"><p className="text-gray-300 text-sm">Entre em contato com o fotografo.</p></div>
+          {hasWhatsApp ? <button onClick={handleWhatsAppContact} className="w-full bg-[#25D366] hover:bg-[#20b859] text-white font-bold p-3 rounded-xl flex items-center justify-center gap-2 shadow-lg"><MessageCircle size={20} />Falar com o Fotografo</button> : <div className="text-gray-500 text-sm">WhatsApp nao disponivel.</div>}
+        </div>
       </div>
     );
   }
@@ -524,12 +1618,26 @@ function ClientApp(props) {
         {featuredList.map(function(url, i) { return <div key={i} className="absolute inset-0 bg-cover bg-center transition-opacity duration-1000 scale-105 blur-[3px]" style={{ backgroundImage: 'url(' + url + ')', opacity: i === bgImageIdx ? 0.35 : 0, zIndex: 1 }} />; })}
         <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/80 z-[2]" />
         <div className="max-w-md w-full bg-black/40 backdrop-blur-xl border border-white/15 rounded-3xl p-8 text-center shadow-2xl relative z-10">
-          <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-[#d4af37] shadow-2xl mx-auto mb-4 bg-neutral-900 p-1"><img src={album.profileImage || (album.photos && album.photos[0]) || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} alt="Capa" className="w-full h-full object-cover rounded-full" /></div>
+          <div className="w-28 h-28 rounded-full overflow-hidden border-4 border-[#d4af37] shadow-2xl mx-auto mb-4 bg-neutral-900 p-1">
+            <img src={album.profileImage || (album.photos && album.photos[0]) || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} alt="Capa" className="w-full h-full object-cover rounded-full" />
+          </div>
           <h2 className="text-2xl font-bold tracking-tight mb-1 text-white">{album.clientName}</h2>
           <p className="text-[#d4af37] text-xs uppercase tracking-widest font-semibold mb-6">{album.subtitle || 'Album Privado'}</p>
-          {album.expiryDate && <div className={'mb-6 rounded-xl p-3 flex items-center gap-2 ' + (albumExpired ? 'bg-red-500/10 border border-red-500/30' : daysRemaining <= 7 ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-white/5 border border-white/10')}><Clock size={16} className={albumExpired ? 'text-red-400' : daysRemaining <= 7 ? 'text-yellow-400' : 'text-[#d4af37]'} /><div className="text-left flex-1"><p className={'text-xs ' + (albumExpired ? 'text-red-400' : 'text-gray-300')}>{albumExpired ? 'Album expirado em ' + expiryDateFormatted : 'Album disponivel ate ' + expiryDateFormatted}</p>{!albumExpired && daysRemaining !== null && <p className={'text-[10px] ' + (daysRemaining <= 7 ? 'text-yellow-400' : 'text-gray-500')}>{daysRemaining <= 0 ? 'Expira hoje' : daysRemaining === 1 ? '1 dia restante' : daysRemaining + ' dias restantes'}</p>}</div></div>}
+          {album.expiryDate && (
+            <div className={'mb-6 rounded-xl p-3 flex items-center gap-2 ' + (albumExpired ? 'bg-red-500/10 border border-red-500/30' : daysRemaining <= 7 ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-white/5 border border-white/10')}>
+              <Clock size={16} className={albumExpired ? 'text-red-400' : daysRemaining <= 7 ? 'text-yellow-400' : 'text-[#d4af37]'} />
+              <div className="text-left flex-1">
+                <p className={'text-xs ' + (albumExpired ? 'text-red-400' : 'text-gray-300')}>{albumExpired ? 'Album expirado em ' + expiryDateFormatted : 'Album disponivel ate ' + expiryDateFormatted}</p>
+                {!albumExpired && daysRemaining !== null && <p className={'text-[10px] ' + (daysRemaining <= 7 ? 'text-yellow-400' : 'text-gray-500')}>{daysRemaining <= 0 ? 'Expira hoje' : daysRemaining === 1 ? '1 dia restante' : daysRemaining + ' dias restantes'}</p>}
+              </div>
+            </div>
+          )}
           <div className="bg-white/5 border border-white/5 rounded-2xl p-4 mb-6 flex items-center gap-3 justify-center text-gray-300 text-sm"><Lock size={16} className="text-[#d4af37]" /><span>Introduza o PIN de acesso</span></div>
-          <form onSubmit={handlePinSubmit} className="space-y-4"><input type="password" value={pinInput} onChange={function(e) { setPinInput(e.target.value); }} placeholder="Digite o PIN secreto" className="w-full bg-white/10 border border-white/10 rounded-xl p-3 text-center text-xl tracking-widest outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent placeholder:text-gray-500 text-white" />{pinError && <p className="text-red-500 text-xs">PIN invalido.</p>}<button type="submit" className="w-full bg-[#d4af37] hover:bg-[#c4a137] text-black font-bold p-3 rounded-xl flex items-center justify-center gap-2 shadow-lg">Desbloquear <ArrowRight size={18} /></button></form>
+          <form onSubmit={handlePinSubmit} className="space-y-4">
+            <input type="password" value={pinInput} onChange={function(e) { setPinInput(e.target.value); }} placeholder="Digite o PIN secreto" className="w-full bg-white/10 border border-white/10 rounded-xl p-3 text-center text-xl tracking-widest outline-none focus:ring-2 focus:ring-[#d4af37] focus:border-transparent placeholder:text-gray-500 text-white" />
+            {pinError && <p className="text-red-500 text-xs">PIN invalido.</p>}
+            <button type="submit" className="w-full bg-[#d4af37] hover:bg-[#c4a137] text-black font-bold p-3 rounded-xl flex items-center justify-center gap-2 shadow-lg">Desbloquear <ArrowRight size={18} /></button>
+          </form>
         </div>
       </div>
     );
@@ -542,8 +1650,13 @@ function ClientApp(props) {
         <div className="absolute inset-0 bg-cover bg-center blur-sm opacity-40 scale-105" style={{ backgroundImage: 'url(' + (album.profileImage || (album.photos && album.photos[0])) + ')' }} />
         <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-[#111]/70 to-transparent" />
         <div className="absolute bottom-0 left-0 w-full px-3 sm:px-6 pb-1 sm:pb-1.5 flex flex-row items-end justify-start gap-2 sm:gap-2.5">
-          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-[#d4af37] shadow-lg bg-neutral-900 p-0.5 flex-shrink-0"><img src={album.profileImage || (album.photos && album.photos[0]) || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} className="w-full h-full object-cover rounded-full" /></div>
-          <div className="flex flex-col pb-0.5"><h1 className="text-base sm:text-xl font-bold text-white leading-tight">{album.clientName}</h1><p className="text-[#d4af37] text-[8px] sm:text-[11px] uppercase tracking-widest font-medium leading-tight">{album.subtitle || 'Album Fotografico'}</p></div>
+          <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-full overflow-hidden border-2 border-[#d4af37] shadow-lg bg-neutral-900 p-0.5 flex-shrink-0">
+            <img src={album.profileImage || (album.photos && album.photos[0]) || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} className="w-full h-full object-cover rounded-full" />
+          </div>
+          <div className="flex flex-col pb-0.5">
+            <h1 className="text-base sm:text-xl font-bold text-white leading-tight">{album.clientName}</h1>
+            <p className="text-[#d4af37] text-[8px] sm:text-[11px] uppercase tracking-widest font-medium leading-tight">{album.subtitle || 'Album Fotografico'}</p>
+          </div>
         </div>
       </div>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-1 sm:mt-1.5">
@@ -555,12 +1668,46 @@ function ClientApp(props) {
       </div>
       {album.expiryDate && daysRemaining !== null && daysRemaining <= 7 && <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3"><div className={'rounded-xl p-3 flex items-center gap-2 ' + (albumExpired ? 'bg-red-500/10 border border-red-500/30' : 'bg-yellow-500/10 border border-yellow-500/30')}><Clock size={16} className={albumExpired ? 'text-red-400' : 'text-yellow-400'} /><p className={'text-xs ' + (albumExpired ? 'text-red-400' : 'text-yellow-400')}>{albumExpired ? 'Este album expirou.' : 'Este album expira em ' + daysRemaining + ' dia(s).'}</p></div></div>}
       {activeTab === 'video' && album.introVideo && (
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4"><div className="flex items-center justify-between mb-3 sm:mb-4"><h2 className="text-sm sm:text-base font-semibold text-gray-200">Video de Abertura</h2><button onClick={function() { setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); }} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><SkipForward size={12} /> Pular para Stories</button></div><div style={{ display: 'flex', justifyContent: 'center' }}><div style={{ width: '100%', maxWidth: '420px', aspectRatio: '9/16', maxHeight: '70vh', position: 'relative', overflow: 'hidden', borderRadius: '20px', background: '#000' }}><video src={optimizedVideoUrl || album.introVideo} controls autoPlay playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} /></div></div></div>
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <h2 className="text-sm sm:text-base font-semibold text-gray-200">Video de Abertura</h2>
+            <button onClick={function() { setActiveTab('stories'); setCurrentStoryIdx(0); setIsStoryPlaying(true); setStoryProgress(0); }} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><SkipForward size={12} /> Pular para Stories</button>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'center' }}>
+            <div style={{ width: '100%', maxWidth: '420px', aspectRatio: '9/16', maxHeight: '70vh', position: 'relative', overflow: 'hidden', borderRadius: '20px', background: '#000' }}>
+              <video src={optimizedVideoUrl || album.introVideo} controls autoPlay playsInline preload="auto" style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }} />
+            </div>
+          </div>
+        </div>
       )}
       {activeTab === 'gallery' && (
-        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4"><div className="flex items-center justify-between mb-3 sm:mb-4"><h2 className="text-sm sm:text-base font-semibold text-gray-200">Galeria ({(album.photos || []).length})</h2><div className="flex gap-1.5 sm:gap-2">{hasWhatsApp && <button onClick={handleWhatsAppContact} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#25D366] hover:bg-[#20b859] text-white font-semibold px-3 py-1.5 rounded-full shadow-md"><MessageCircle size={12} /> Falar com o fotografo</button>}<button onClick={handleDownloadRedirect} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><Download size={12} /> Baixar</button></div></div>
-          {album.photos?.length > 0 ? (<div ref={galleryRef} className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-3 space-y-2 sm:space-y-3">{album.photos.slice(0, visiblePhotos).map(function(p, i) { return <div key={i} className="relative group cursor-pointer break-inside-avoid rounded-lg overflow-hidden bg-gray-900 border border-white/10"><img src={p} alt={'Foto ' + (i+1)} className="w-full h-auto object-cover" loading="lazy" onClick={function() { setLightboxPhoto(p); }} /><div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center" onClick={function() { setLightboxPhoto(p); }}><Eye size={18} className="text-white opacity-0 group-hover:opacity-100" /></div><button onClick={function(e) { e.stopPropagation(); handleSharePhoto(p); }} className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80" title="Compartilhar"><Share2 size={14} /></button></div>; })}</div>) : <div className="text-center py-14 text-gray-500"><ImageIcon size={36} className="mx-auto mb-2 opacity-50" /><p className="text-xs">Nenhuma foto.</p></div>}
-          {visiblePhotos < (album.photos?.length || 0) && <div id="scroll-sentinel" className="flex justify-center py-5">{isLoadingMore ? <Loader2 size={18} className="animate-spin text-[#d4af37]" /> : <p className="text-gray-500 text-xs">Rolando...</p>}</div>}</div>
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 mt-3 sm:mt-4">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <h2 className="text-sm sm:text-base font-semibold text-gray-200">Galeria ({(album.photos || []).length})</h2>
+            <div className="flex gap-1.5 sm:gap-2">
+              {hasWhatsApp && <button onClick={handleWhatsAppContact} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#25D366] hover:bg-[#20b859] text-white font-semibold px-3 py-1.5 rounded-full shadow-md"><MessageCircle size={12} /> Falar com o fotografo</button>}
+              <button onClick={handleDownloadRedirect} className="flex items-center gap-1 text-[10px] sm:text-xs bg-[#d4af37] hover:bg-[#c4a137] text-black font-semibold px-3 py-1.5 rounded-full shadow-md"><Download size={12} /> Baixar</button>
+            </div>
+          </div>
+          {album.photos?.length > 0 ? (
+            <div ref={galleryRef} className="columns-2 md:columns-3 lg:columns-4 gap-2 sm:gap-3 space-y-2 sm:space-y-3">
+              {album.photos.slice(0, visiblePhotos).map(function(p, i) {
+                return (
+                  <div key={i} className="relative group cursor-pointer break-inside-avoid rounded-lg overflow-hidden bg-gray-900 border border-white/10">
+                    <img src={p} alt={'Foto ' + (i+1)} className="w-full h-auto object-cover" loading="lazy" onClick={function() { setLightboxPhoto(p); }} />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-colors flex items-center justify-center" onClick={function() { setLightboxPhoto(p); }}>
+                      <Eye size={18} className="text-white opacity-0 group-hover:opacity-100" />
+                    </div>
+                    <button onClick={function(e) { e.stopPropagation(); handleSharePhoto(p); }} className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm text-white rounded-full p-2 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/80" title="Compartilhar"><Share2 size={14} /></button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-center py-14 text-gray-500"><ImageIcon size={36} className="mx-auto mb-2 opacity-50" /><p className="text-xs">Nenhuma foto.</p></div>
+          )}
+          {visiblePhotos < (album.photos?.length || 0) && <div id="scroll-sentinel" className="flex justify-center py-5">{isLoadingMore ? <Loader2 size={18} className="animate-spin text-[#d4af37]" /> : <p className="text-gray-500 text-xs">Rolando...</p>}</div>}
+        </div>
       )}
       {activeTab === 'stories' && (
         <div className="fixed inset-0 z-50 bg-[#0a0a0a] flex items-center justify-center sm:p-6">
@@ -568,23 +1715,71 @@ function ClientApp(props) {
             <div className="relative w-full h-full sm:max-w-[400px] sm:max-h-[90vh] sm:rounded-[40px] bg-black overflow-hidden shadow-2xl sm:border-[8px] border-neutral-900 flex flex-col">
               <div className="absolute top-4 sm:top-5 inset-x-0 z-30 px-1 flex justify-center">
                 <div ref={storyBarsRef} style={{ display: 'flex', gap: '2px', overflowX: 'auto', overflowY: 'hidden', scrollbarWidth: 'none', msOverflowStyle: 'none', WebkitOverflowScrolling: 'touch', paddingBottom: '2px', maxWidth: 'calc(100% - 20px)', justifyContent: 'center' }}>
-                  {album.photos.map(function(_, idx) { var distance = Math.abs(idx - currentStoryIdx); var opacity; if (distance === 0) { opacity = 1; } else if (distance <= 3) { opacity = 0.7 - (distance * 0.1); } else if (distance <= 8) { opacity = 0.4 - ((distance - 3) * 0.05); } else { opacity = 0.1; } var barWidth; if (distance === 0) { barWidth = '10px'; } else if (distance <= 2) { barWidth = '6px'; } else { barWidth = '4px'; } var width; if (idx < currentStoryIdx) width = '100%'; else if (idx === currentStoryIdx) width = (storyProgress * 100) + '%'; else width = '0%'; return (<div key={idx} style={{ minWidth: barWidth, width: barWidth, height: '3px', flexShrink: 0, opacity: opacity, transition: 'opacity 0.3s ease, width 0.3s ease' }} className="bg-white/30 rounded-full overflow-hidden"><div className="h-full bg-white rounded-full" style={{ width: width, transition: idx === currentStoryIdx ? 'none' : 'width 0.3s ease' }} /></div>); })}
+                  {album.photos.map(function(_, idx) {
+                    var distance = Math.abs(idx - currentStoryIdx);
+                    var opacity;
+                    if (distance === 0) { opacity = 1; } else if (distance <= 3) { opacity = 0.7 - (distance * 0.1); } else if (distance <= 8) { opacity = 0.4 - ((distance - 3) * 0.05); } else { opacity = 0.1; }
+                    var barWidth;
+                    if (distance === 0) { barWidth = '10px'; } else if (distance <= 2) { barWidth = '6px'; } else { barWidth = '4px'; }
+                    var width;
+                    if (idx < currentStoryIdx) width = '100%'; else if (idx === currentStoryIdx) width = (storyProgress * 100) + '%'; else width = '0%';
+                    return (
+                      <div key={idx} style={{ minWidth: barWidth, width: barWidth, height: '3px', flexShrink: 0, opacity: opacity, transition: 'opacity 0.3s ease, width 0.3s ease' }} className="bg-white/30 rounded-full overflow-hidden">
+                        <div className="h-full bg-white rounded-full" style={{ width: width, transition: idx === currentStoryIdx ? 'none' : 'width 0.3s ease' }} />
+                      </div>
+                    );
+                  })}
                 </div>
-                <div style={{ position: 'absolute', top: 0, left: 0, width: '20px', height: '100%', background: 'linear-gradient(to right, rgba(10,10,10,1), rgba(10,10,10,0))', pointerEvents: 'none', zIndex: 1 }} /><div style={{ position: 'absolute', top: 0, right: 0, width: '20px', height: '100%', background: 'linear-gradient(to left, rgba(10,10,10,1), rgba(10,10,10,0))', pointerEvents: 'none', zIndex: 1 }} />
+                <div style={{ position: 'absolute', top: 0, left: 0, width: '20px', height: '100%', background: 'linear-gradient(to right, rgba(10,10,10,1), rgba(10,10,10,0))', pointerEvents: 'none', zIndex: 1 }} />
+                <div style={{ position: 'absolute', top: 0, right: 0, width: '20px', height: '100%', background: 'linear-gradient(to left, rgba(10,10,10,1), rgba(10,10,10,0))', pointerEvents: 'none', zIndex: 1 }} />
               </div>
               <div className="absolute top-8 sm:top-9 inset-x-4 sm:inset-x-5 flex justify-between items-center z-30 px-1">
-                <div className="flex items-center gap-2.5"><div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden border border-white/20 bg-neutral-800 p-0.5"><img src={album.profileImage || (album.photos && album.photos[0])} alt="Perfil" className="w-full h-full object-cover rounded-full" /></div><div className="flex flex-col"><span className="text-xs sm:text-sm font-semibold text-white leading-none mb-0.5">{album.clientName}</span><span className="text-[9px] sm:text-[11px] text-white/80 font-medium leading-none">{album.subtitle || 'Album Fotografico'}</span></div></div>
-                <div className="flex gap-3 sm:gap-2.5 items-center">{album.storyMusic && <button onClick={toggleMute} className="text-white hover:opacity-70">{isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>}<button onClick={function(e) { e.stopPropagation(); handleShareCurrentStory(); }} className="text-white hover:opacity-70 transition-opacity" title="Compartilhar"><Share2 size={16} /></button><button onClick={function() { setIsStoryPlaying(!isStoryPlaying); }} className="text-white hover:opacity-70">{isStoryPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</button><button onClick={function() { setIsStoryPlaying(false); setActiveTab('gallery'); if (audioRef.current) audioRef.current.pause(); }} className="text-white hover:opacity-70"><X size={22} /></button></div>
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden border border-white/20 bg-neutral-800 p-0.5">
+                    <img src={album.profileImage || (album.photos && album.photos[0])} alt="Perfil" className="w-full h-full object-cover rounded-full" />
+                  </div>
+                  <div className="flex flex-col">
+                    <span className="text-xs sm:text-sm font-semibold text-white leading-none mb-0.5">{album.clientName}</span>
+                    <span className="text-[9px] sm:text-[11px] text-white/80 font-medium leading-none">{album.subtitle || 'Album Fotografico'}</span>
+                  </div>
+                </div>
+                <div className="flex gap-3 sm:gap-2.5 items-center">
+                  {album.storyMusic && <button onClick={toggleMute} className="text-white hover:opacity-70">{isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>}
+                  <button onClick={function(e) { e.stopPropagation(); handleShareCurrentStory(); }} className="text-white hover:opacity-70 transition-opacity" title="Compartilhar"><Share2 size={16} /></button>
+                  <button onClick={function() { setIsStoryPlaying(!isStoryPlaying); }} className="text-white hover:opacity-70">{isStoryPlaying ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}</button>
+                  <button onClick={function() { setIsStoryPlaying(false); setActiveTab('gallery'); if (audioRef.current) audioRef.current.pause(); }} className="text-white hover:opacity-70"><X size={22} /></button>
+                </div>
               </div>
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-950"><img src={album.photos[currentStoryIdx]} alt={'Story ' + (currentStoryIdx + 1)} className="w-full h-full object-contain" /></div>
-              <div className="absolute inset-0 z-20 flex"><div className="w-[50%] h-full cursor-pointer" onClick={function() { handleStoryNavigation('prev'); }} /><div className="w-[50%] h-full cursor-pointer" onClick={function() { handleStoryNavigation('next'); }} /></div>
-              {album.storyMusic && audioLoaded && !isMuted && <div className="absolute bottom-20 left-3 z-30 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-full px-2.5 py-1"><Music size={10} className="text-[#d4af37] animate-pulse" /><span className="text-[9px] text-white/90">Musica</span></div>}
-              {hasWhatsApp && <div className="absolute bottom-5 left-0 right-0 z-30 flex justify-center px-3"><button onClick={handleWhatsAppContact} className="bg-[#25D366] hover:bg-[#20b859] text-white font-semibold py-2.5 px-5 rounded-full flex items-center gap-1.5 text-sm shadow-lg"><MessageCircle size={16} /> Falar com o fotografo</button></div>}
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-950">
+                <img src={album.photos[currentStoryIdx]} alt={'Story ' + (currentStoryIdx + 1)} className="w-full h-full object-contain" />
+              </div>
+              <div className="absolute inset-0 z-20 flex">
+                <div className="w-[50%] h-full cursor-pointer" onClick={function() { handleStoryNavigation('prev'); }} />
+                <div className="w-[50%] h-full cursor-pointer" onClick={function() { handleStoryNavigation('next'); }} />
+              </div>
+              {album.storyMusic && audioLoaded && !isMuted && (
+                <div className="absolute bottom-20 left-3 z-30 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-full px-2.5 py-1">
+                  <Music size={10} className="text-[#d4af37] animate-pulse" />
+                  <span className="text-[9px] text-white/90">Musica</span>
+                </div>
+              )}
+              {hasWhatsApp && (
+                <div className="absolute bottom-5 left-0 right-0 z-30 flex justify-center px-3">
+                  <button onClick={handleWhatsAppContact} className="bg-[#25D366] hover:bg-[#20b859] text-white font-semibold py-2.5 px-5 rounded-full flex items-center gap-1.5 text-sm shadow-lg">
+                    <MessageCircle size={16} /> Falar com o fotografo
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
       )}
-      {lightboxPhoto && <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4"><button onClick={function() { setLightboxPhoto(null); }} className="absolute top-5 right-5 text-white bg-white/10 p-2.5 rounded-full hover:bg-white/20 z-50"><X size={22} /></button><img src={lightboxPhoto} className="max-w-full max-h-[85vh] rounded-lg object-contain" /></div>}
+      {lightboxPhoto && (
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center p-4">
+          <button onClick={function() { setLightboxPhoto(null); }} className="absolute top-5 right-5 text-white bg-white/10 p-2.5 rounded-full hover:bg-white/20 z-50"><X size={22} /></button>
+          <img src={lightboxPhoto} className="max-w-full max-h-[85vh] rounded-lg object-contain" />
+        </div>
+      )}
     </div>
   );
 }
@@ -624,12 +1819,8 @@ function AlbumLoader(props) {
           urls.forEach(function(u) { 
             var img = new Image(); 
             img.src = u; 
-            img.onload = function() { 
-              updateProgress(); 
-            }; 
-            img.onerror = function() { 
-              updateProgress(); 
-            }; 
+            img.onload = function() { updateProgress(); }; 
+            img.onerror = function() { updateProgress(); }; 
           });
           
           if (videoUrl) {
@@ -699,9 +1890,7 @@ function AlbumLoader(props) {
     
     return function() {
       if (videoPreloadRef.current) {
-        try {
-          document.body.removeChild(videoPreloadRef.current);
-        } catch(e) {}
+        try { document.body.removeChild(videoPreloadRef.current); } catch(e) {}
         videoPreloadRef.current = null;
       }
     };
@@ -714,9 +1903,7 @@ function AlbumLoader(props) {
         if(ap===100){
           if(p>=100){
             clearInterval(i);
-            setTimeout(function(){
-              setStatus('ready');
-            },400);
+            setTimeout(function(){ setStatus('ready'); },400);
             return 100;
           }
           return p+1;
@@ -737,7 +1924,11 @@ function AlbumLoader(props) {
         <style>{'@keyframes fadeRandom{0%,100%{opacity:0;transform:scale(.9)}50%{opacity:.7;transform:scale(1.05)}}@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}@keyframes pulse-dot{0%,100%{opacity:0.3}50%{opacity:1}}'}</style>
         <div className="absolute inset-0 z-0 flex items-center justify-center">
           <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 w-full h-[120%] rotate-[-4deg] scale-110 opacity-30">
-            {Array.from({length:25}).map(function(_,i){var s=bg[i%(bg.length||1)];if(!s)return null;return <div key={i} className="relative w-full aspect-square rounded-xl overflow-hidden bg-neutral-900" style={{animation:'fadeRandom '+(3+Math.random()*4)+'s infinite ease-in-out '+(Math.random()*2)+'s'}}><img src={s} className="w-full h-full object-cover grayscale brightness-75" alt="" /></div>;})}
+            {Array.from({length:25}).map(function(_,i){
+              var s=bg[i%(bg.length||1)];
+              if(!s)return null;
+              return <div key={i} className="relative w-full aspect-square rounded-xl overflow-hidden bg-neutral-900" style={{animation:'fadeRandom '+(3+Math.random()*4)+'s infinite ease-in-out '+(Math.random()*2)+'s'}}><img src={s} className="w-full h-full object-cover grayscale brightness-75" alt="" /></div>;
+            })}
           </div>
         </div>
         <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a0a]/90 via-[#0a0a0a]/60 to-[#0a0a0a] z-0" />
@@ -785,10 +1976,11 @@ function AlbumLoader(props) {
 }
 
 function AdminDashboard(props) {
-  var albums = props.albums, setAlbums = props.setAlbums, isLoading = props.isLoading, isAdminLoggedIn = props.isAdminLoggedIn, setIsAdminLoggedIn = props.setIsAdminLoggedIn;
+  var albums = props.albums, setAlbums = props.setAlbums, isLoading = props.isLoading;
   var _useState29 = useState(null), copiedId = _useState29[0], setCopiedId = _useState29[1];
   
-  var handleLogout = function() { sessionStorage.removeItem('adminLoggedIn'); sessionStorage.removeItem('adminUser'); setIsAdminLoggedIn(false); };
+  // NOTA: a função handleLogout foi REMOVIDA pois o botão "Sair" agora está no AdminShell.
+  
   var handleDeleteAlbum = function(shortId) { 
     if(window.confirm('Excluir este álbum permanentemente? AS FOTOS SERÃO APAGADAS DO CLOUDINARY!')) { 
       deleteAlbumFromSheets(shortId).then(function(success) { 
@@ -814,11 +2006,62 @@ function AdminDashboard(props) {
 
   return (
     <div className="min-h-screen bg-[#f5f5f7] text-gray-900">
-      <header className="bg-white/80 backdrop-blur-md border-b border-gray-200 px-4 sm:px-8 py-3 sm:py-4 flex justify-between items-center sticky top-0 z-10">
-        <div className="flex items-center gap-2"><div className="bg-black text-[#d4af37] p-1.5 rounded-lg"><Camera size={20} /></div><h1 className="text-lg sm:text-xl font-semibold">Studio Dashboard</h1></div>
-        <div className="flex items-center gap-2"><button onClick={function() { window.location.hash = '#new'; }} className="bg-black text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-full font-medium flex items-center gap-1.5 hover:bg-gray-800 transition-all text-xs sm:text-sm shadow-sm"><Plus size={14} /> <span className="hidden sm:inline">Criar Album</span></button><button onClick={handleLogout} className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-full text-xs font-medium flex items-center gap-1 transition-all" title="Sair"><LogOut size={14} /></button></div>
-      </header>
-      <main className="max-w-7xl mx-auto p-4 sm:p-6"><div className="mb-6"><h2 className="text-xl sm:text-2xl font-semibold">Os Meus Envios</h2><p className="text-gray-500 text-xs mt-0.5">Albuns armazenados de forma permanente.</p></div>{isLoading ? <div className="flex justify-center py-16"><Loader2 size={36} className="animate-spin text-gray-400" /></div> : albums.length === 0 ? <div className="bg-white rounded-2xl border border-gray-200 p-10 sm:p-14 text-center"><div className="bg-gray-100 rounded-full p-3 mb-3 inline-block"><ImageIcon size={36} className="text-gray-400" /></div><h3 className="text-base font-semibold text-gray-700">Nenhum album criado</h3></div> : <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">{albums.map(function(album) { var expired = isAlbumExpired(album); var daysLeft = getDaysRemaining(album); return <div key={album.id} className={'bg-white rounded-2xl shadow-sm border hover:shadow-md transition-shadow p-4 flex flex-col ' + (expired ? 'border-red-300 bg-red-50/30' : 'border-gray-100')}><div className="flex items-center gap-3 mb-3"><div className="w-12 h-12 rounded-full overflow-hidden bg-gray-100"><img src={album.profileImage || (album.photos && album.photos[0]) || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} alt="Cover" className="w-full h-full object-cover" /></div><div className="flex-1"><h3 className="font-semibold text-base truncate">{album.clientName}</h3><p className="text-xs text-gray-500">{album.subtitle}</p></div></div><div className="bg-gray-50 p-2.5 rounded-xl text-xs text-gray-600 mb-1.5">📸 {(album.photos || []).length} fotos | 🔑 ID: {album.shortId}</div>{album.expiryDate && <div className={'rounded-lg p-2 mb-2 flex items-center gap-1.5 text-[10px] ' + (expired ? 'bg-red-100 text-red-700' : daysLeft <= 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700')}><Clock size={12} /><span>{expired ? 'Expirado' : daysLeft + ' dia(s) restantes'}</span></div>}<div className="mt-auto flex items-center justify-between pt-3 border-t border-gray-100"><div className="flex gap-1"><button onClick={function() { window.location.hash = '#edit_' + album.id; }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg" title="Editar Álbum"><Edit3 size={16} /></button><button onClick={function() { handleSendEmail(album); }} className="p-1.5 text-gray-400 hover:text-[#00965e] rounded-lg" title="Enviar E-mail ao Cliente"><Mail size={16} /></button><button onClick={function() { handleDeleteAlbum(album.shortId); }} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg" title="Deletar Álbum"><Trash2 size={16} /></button></div><button onClick={function() { var url = window.location.origin + '/api/share?id=' + album.shortId; navigator.clipboard.writeText(url); setCopiedId(album.id); setTimeout(function() { setCopiedId(null); }, 2000); }} className={'px-3 py-1.5 rounded-full font-medium text-xs flex items-center gap-1 ' + (copiedId === album.id ? 'bg-green-500 text-white' : 'bg-black text-white')}>{copiedId === album.id ? <CheckCircle size={11} /> : <LinkIcon size={11} />}Copiar Link</button></div></div>; })}</div>}</main>
+      <main className="max-w-7xl mx-auto p-4 sm:p-6">
+        <div className="mb-6 flex justify-between items-center">
+          <div>
+            <h2 className="text-xl sm:text-2xl font-semibold">Os Meus Envios</h2>
+            <p className="text-gray-500 text-xs mt-0.5">Albuns armazenados de forma permanente.</p>
+          </div>
+          <button onClick={function() { window.location.hash = '#new'; }} className="bg-black text-white px-4 py-2 rounded-full font-medium flex items-center gap-1.5 hover:bg-gray-800 transition-all text-xs sm:text-sm shadow-sm">
+            <Plus size={14} /> <span className="hidden sm:inline">Criar Album</span>
+          </button>
+        </div>
+        
+        {isLoading ? (
+          <div className="flex justify-center py-16"><Loader2 size={36} className="animate-spin text-gray-400" /></div>
+        ) : albums.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-200 p-10 sm:p-14 text-center">
+            <div className="bg-gray-100 rounded-full p-3 mb-3 inline-block"><ImageIcon size={36} className="text-gray-400" /></div>
+            <h3 className="text-base font-semibold text-gray-700">Nenhum album criado</h3>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            {albums.map(function(album) {
+              var expired = isAlbumExpired(album);
+              var daysLeft = getDaysRemaining(album);
+              return (
+                <div key={album.id} className={'bg-white rounded-2xl shadow-sm border hover:shadow-md transition-shadow p-4 flex flex-col ' + (expired ? 'border-red-300 bg-red-50/30' : 'border-gray-100')}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-100">
+                      <img src={album.profileImage || (album.photos && album.photos[0]) || 'https://images.unsplash.com/photo-1516205651411-aef33a44f7c2?q=80&w=150&auto=format&fit=crop'} alt="Cover" className="w-full h-full object-cover" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-base truncate">{album.clientName}</h3>
+                      <p className="text-xs text-gray-500">{album.subtitle}</p>
+                    </div>
+                  </div>
+                  <div className="bg-gray-50 p-2.5 rounded-xl text-xs text-gray-600 mb-1.5">📸 {(album.photos || []).length} fotos | 🔑 ID: {album.shortId}</div>
+                  {album.expiryDate && (
+                    <div className={'rounded-lg p-2 mb-2 flex items-center gap-1.5 text-[10px] ' + (expired ? 'bg-red-100 text-red-700' : daysLeft <= 7 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700')}>
+                      <Clock size={12} /><span>{expired ? 'Expirado' : daysLeft + ' dia(s) restantes'}</span>
+                    </div>
+                  )}
+                  <div className="mt-auto flex items-center justify-between pt-3 border-t border-gray-100">
+                    <div className="flex gap-1">
+                      <button onClick={function() { window.location.hash = '#edit_' + album.id; }} className="p-1.5 text-gray-400 hover:text-blue-600 rounded-lg" title="Editar Álbum"><Edit3 size={16} /></button>
+                      <button onClick={function() { handleSendEmail(album); }} className="p-1.5 text-gray-400 hover:text-[#00965e] rounded-lg" title="Enviar E-mail ao Cliente"><Mail size={16} /></button>
+                      <button onClick={function() { handleDeleteAlbum(album.shortId); }} className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg" title="Deletar Álbum"><Trash2 size={16} /></button>
+                    </div>
+                    <button onClick={function() { var url = window.location.origin + '/api/share?id=' + album.shortId; navigator.clipboard.writeText(url); setCopiedId(album.id); setTimeout(function() { setCopiedId(null); }, 2000); }} className={'px-3 py-1.5 rounded-full font-medium text-xs flex items-center gap-1 ' + (copiedId === album.id ? 'bg-green-500 text-white' : 'bg-black text-white')}>
+                      {copiedId === album.id ? <CheckCircle size={11} /> : <LinkIcon size={11} />}Copiar Link
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </main>
     </div>
   );
 }
@@ -854,6 +2097,7 @@ function AdminEditor(props) {
   var hrv = function() { setVideoFile(null); setVideoPreview(''); };
   var hrm = function() { setSmf(null); setSmp(''); setMst(0); setMet(null); setAd(null); };
   var hrp = function(i) { var np = up.slice(); np.splice(i, 1); setUp(np); if (sf.indexOf(i) !== -1) setSf(sf.filter(function(x) { return x !== i; })); if (sp === up[i]) setSp(''); };
+  
   var hs = async function(e) { 
     e.preventDefault(); 
     if (!formData.clientName) { alert("Preencha o Nome do Cliente."); return; } 
@@ -869,11 +2113,7 @@ function AdminEditor(props) {
       
       for (var i = 0; i < up.length; i++) { 
         var ph = up[i]; 
-        if (ph.startsWith('http')) { 
-          urls.push(ph); 
-          step++; 
-          continue; 
-        } 
+        if (ph.startsWith('http')) { urls.push(ph); step++; continue; } 
         var u = await uploadToCloudinary(ph, aid, 'image'); 
         if (!u) throw new Error("Falha ao enviar imagem."); 
         urls.push(u); 
@@ -951,9 +2191,7 @@ function AdminEditor(props) {
       if (await saveAlbumToSheets(fd)) { 
         setUpr(100); 
         setUploadStatus('✅ Concluído!'); 
-        setTimeout(function() { 
-          onSave(fd); 
-        }, 500); 
+        setTimeout(function() { onSave(fd); }, 500); 
       } else throw new Error("Falha ao salvar."); 
     } catch (er) { 
       alert('Erro: ' + er.message); 
@@ -967,33 +2205,205 @@ function AdminEditor(props) {
   return (
     <div className="min-h-screen bg-[#f5f5f7] py-6 sm:py-8 px-3 sm:px-4">
       <div className="max-w-4xl mx-auto bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-5 sm:px-6 py-3.5 border-b border-gray-100 flex justify-between items-center bg-white"><h2 className="text-lg font-semibold flex items-center gap-2">{isNew ? <Plus size={20} /> : <Edit3 size={20} />}{isNew ? 'Criar Novo Album' : 'Editar Album'}</h2><button onClick={onCancel} className="text-gray-400 hover:text-gray-600"><X size={20} /></button></div>
+        <div className="px-5 sm:px-6 py-3.5 border-b border-gray-100 flex justify-between items-center bg-white">
+          <h2 className="text-lg font-semibold flex items-center gap-2">{isNew ? <Plus size={20} /> : <Edit3 size={20} />}{isNew ? 'Criar Novo Album' : 'Editar Album'}</h2>
+          <button onClick={onCancel} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+        </div>
         <form onSubmit={hs} className="p-5 sm:p-6 space-y-5">
-          <div className="flex gap-4 mb-4 border-b border-gray-100"><button type="button" onClick={function() { setActiveTab('dados'); }} className={'pb-2.5 font-semibold flex items-center gap-1.5 border-b-2 text-sm ' + (activeTab === 'dados' ? 'text-[#d4af37] border-[#d4af37]' : 'text-gray-400 border-transparent hover:text-gray-600')}><FileText size={16} /> Dados Basicos</button><button type="button" onClick={function() { setActiveTab('personalizar'); }} className={'pb-2.5 font-semibold flex items-center gap-1.5 border-b-2 text-sm ' + (activeTab === 'personalizar' ? 'text-[#d4af37] border-[#d4af37]' : 'text-gray-400 border-transparent hover:text-gray-600')}><Settings size={16} /> Personalizar Loading</button></div>
+          <div className="flex gap-4 mb-4 border-b border-gray-100">
+            <button type="button" onClick={function() { setActiveTab('dados'); }} className={'pb-2.5 font-semibold flex items-center gap-1.5 border-b-2 text-sm ' + (activeTab === 'dados' ? 'text-[#d4af37] border-[#d4af37]' : 'text-gray-400 border-transparent hover:text-gray-600')}><FileText size={16} /> Dados Basicos</button>
+            <button type="button" onClick={function() { setActiveTab('personalizar'); }} className={'pb-2.5 font-semibold flex items-center gap-1.5 border-b-2 text-sm ' + (activeTab === 'personalizar' ? 'text-[#d4af37] border-[#d4af37]' : 'text-gray-400 border-transparent hover:text-gray-600')}><Settings size={16} /> Personalizar Loading</button>
+          </div>
+          
           {activeTab === 'dados' && (
             <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3"><div><label className="block text-xs font-medium text-gray-700 mb-1">Nome do Cliente</label><input type="text" value={formData.clientName} onChange={function(e) { setFormData(Object.assign({}, formData, { clientName: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: Casamento Joao & Maria" /></div><div><label className="block text-xs font-medium text-gray-700 mb-1">Subtitulo</label><input type="text" value={formData.subtitle} onChange={function(e) { setFormData(Object.assign({}, formData, { subtitle: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: 15 de Outubro, 2026" /></div></div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div><label className="block text-xs font-medium text-gray-700 mb-1">E-mail do Cliente (Para Envios Automáticos)</label><input type="email" value={formData.clientEmail || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { clientEmail: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: cliente@email.com" /></div>
-                <div><label className="block text-xs font-medium text-gray-700 mb-1">PIN de Acesso</label><input type="text" value={formData.pin} onChange={function(e) { setFormData(Object.assign({}, formData, { pin: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: 1234" /></div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Nome do Cliente</label>
+                  <input type="text" value={formData.clientName} onChange={function(e) { setFormData(Object.assign({}, formData, { clientName: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: Casamento Joao & Maria" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Subtitulo</label>
+                  <input type="text" value={formData.subtitle} onChange={function(e) { setFormData(Object.assign({}, formData, { subtitle: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: 15 de Outubro, 2026" />
+                </div>
               </div>
-              <div><label className="block text-xs font-medium text-gray-700 mb-1">Link do Google Drive (Download)</label><input type="url" value={formData.googleDriveUrl} onChange={function(e) { setFormData(Object.assign({}, formData, { googleDriveUrl: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="https://drive.google.com/drive/folders/..." /></div>
-              <div><label className="block text-xs font-medium text-gray-700 mb-1">📱 WhatsApp</label><input type="tel" value={formData.whatsappNumber || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { whatsappNumber: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none" placeholder="Ex: 11912345678" /></div>
-              <div className="p-4 border border-orange-200 rounded-xl bg-orange-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">📅 Prazo de Expiracao do Album (opcional)</label><div className="flex items-center gap-2"><Calendar size={16} className="text-orange-500" /><input type="date" value={formData.expiryDate || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { expiryDate: e.target.value })); }} className="w-full border border-orange-200 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none" /></div></div>
-              <div className="p-4 border border-blue-200 rounded-xl bg-blue-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">🎬 Video de Abertura (Upload MP4)</label>{videoPreview ? (<div className="space-y-3"><div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-blue-200"><Video size={18} className="text-blue-600" /><div className="flex-1"><p className="text-xs font-medium">{videoFile ? videoFile.name : 'Video carregado'}</p></div><button type="button" onClick={hrv} className="text-red-500 p-1"><Trash2 size={14} /></button></div><video controls className="w-full rounded-lg" src={videoPreview} style={{ maxHeight: '200px' }} /></div>) : (<label className="cursor-pointer inline-block"><div className="bg-blue-600 text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-blue-700"><Video size={14} /> Selecionar Video (MP4)</div><input type="file" accept="video/*" onChange={hvu} className="hidden" disabled={iu || isSaving} /></label>)}</div>
-              <div className="p-4 border border-purple-200 rounded-xl bg-purple-50/30"><label className="block text-sm font-semibold text-gray-900 mb-1.5">🎵 Musica dos Stories</label><p className="text-xs text-gray-500 mb-3"><strong className="text-purple-700">A musica so toca nos Stories.</strong></p>{smp ? (<div className="space-y-3"><div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-purple-200"><Music size={18} className="text-purple-600" /><div className="flex-1"><p className="text-xs font-medium">{smf ? smf.name : 'Musica carregada'}</p></div><button type="button" onClick={hrm} className="text-red-500 p-1"><Trash2 size={14} /></button></div><audio controls className="w-full" src={smp} /><AudioTrimmer audioUrl={smp} startTime={mst} endTime={met || ad} duration={ad} onStartChange={setMst} onEndChange={setMet} /></div>) : (<label className="cursor-pointer inline-block"><div className="bg-purple-600 text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-purple-700"><Music size={14} /> Selecionar Musica (MP3)</div><input type="file" accept="audio/*" onChange={hmu} className="hidden" /></label>)}</div>
-              <div className="p-4 border-2 border-dashed border-[#d4af37] rounded-xl bg-yellow-50/20"><label className="block text-sm font-semibold text-gray-900 mb-2">📸 Fotos da Galeria</label><label className="cursor-pointer"><div className="w-full bg-[#d4af37] text-black font-semibold rounded-lg py-2.5 px-4 flex items-center justify-center gap-2 hover:bg-[#c4a137] text-sm"><FolderUp size={16} />Selecionar Fotos</div><input type="file" accept="image/*" multiple onChange={hfu} className="hidden" /></label>{(up || []).length > 0 && <div className="mt-3"><p className="text-xs font-medium mb-2">{(up || []).length} foto(s)</p><div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-80 overflow-y-auto p-1.5">{(up || []).map(function(p, i) { return <div key={i} className="relative group"><img src={p} className="w-full aspect-square object-cover rounded-lg border" /><button type="button" onClick={function() { hrp(i); }} className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100"><Trash2 size={10} /></button></div>; })}</div></div>}</div>
-              {(up || []).length > 0 && (<><div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50"><label className="block text-sm font-semibold mb-2">📷 Foto de Perfil</label><div className="flex justify-center mb-3"><div className="w-20 h-20 rounded-full overflow-hidden border-3 border-[#d4af37] bg-neutral-900 p-0.5">{sp ? <img src={sp} className="w-full h-full object-cover rounded-full" /> : <div className="w-full h-full bg-neutral-800 rounded-full flex items-center justify-center"><Camera size={24} className="text-gray-400" /></div>}</div></div><div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto">{(up || []).slice(0, 50).map(function(p, i) { return <div key={i} onClick={function() { setSp(p); }} className={'relative cursor-pointer rounded-lg overflow-hidden ' + (sp === p ? 'ring-3 ring-[#d4af37] scale-95' : 'hover:scale-95')}><img src={p} className="w-full aspect-square object-cover" />{sp === p && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><CheckCircle size={20} className="text-[#d4af37]" /></div>}</div>; })}</div></div><div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50"><label className="block text-sm font-semibold mb-2">⭐ Fotos em Destaque</label><p className="text-xs text-gray-500 mb-3">Selecione ate 5 fotos para o fundo da tela de PIN</p><div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto">{(up || []).slice(0, 50).map(function(p, i) { var isSel = sf.indexOf(i) !== -1; return <div key={i} onClick={function() { if (isSel) setSf(sf.filter(function(x) { return x !== i; })); else if (sf.length < 5) setSf(sf.concat([i])); }} className={'relative cursor-pointer rounded-lg overflow-hidden ' + (isSel ? 'ring-3 ring-[#d4af37] scale-95' : 'hover:scale-95')}><img src={p} className="w-full aspect-square object-cover" />{isSel && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><CheckCircle size={20} className="text-[#d4af37]" /></div>}</div>; })}</div></div></>)}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">E-mail do Cliente (Para Envios Automáticos)</label>
+                  <input type="email" value={formData.clientEmail || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { clientEmail: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: cliente@email.com" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">PIN de Acesso</label>
+                  <input type="text" value={formData.pin} onChange={function(e) { setFormData(Object.assign({}, formData, { pin: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="Ex: 1234" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Link do Google Drive (Download)</label>
+                <input type="url" value={formData.googleDriveUrl} onChange={function(e) { setFormData(Object.assign({}, formData, { googleDriveUrl: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-black focus:border-transparent outline-none" placeholder="https://drive.google.com/drive/folders/..." />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">📱 WhatsApp</label>
+                <input type="tel" value={formData.whatsappNumber || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { whatsappNumber: e.target.value })); }} className="w-full border border-gray-200 rounded-lg p-2.5 text-sm bg-gray-50 focus:bg-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none" placeholder="Ex: 11912345678" />
+              </div>
+              <div className="p-4 border border-orange-200 rounded-xl bg-orange-50/30">
+                <label className="block text-sm font-semibold text-gray-900 mb-1.5">📅 Prazo de Expiracao do Album (opcional)</label>
+                <div className="flex items-center gap-2">
+                  <Calendar size={16} className="text-orange-500" />
+                  <input type="date" value={formData.expiryDate || ''} onChange={function(e) { setFormData(Object.assign({}, formData, { expiryDate: e.target.value })); }} className="w-full border border-orange-200 rounded-lg p-2.5 text-sm bg-white focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none" />
+                </div>
+              </div>
+              <div className="p-4 border border-blue-200 rounded-xl bg-blue-50/30">
+                <label className="block text-sm font-semibold text-gray-900 mb-1.5">🎬 Video de Abertura (Upload MP4)</label>
+                {videoPreview ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-blue-200">
+                      <Video size={18} className="text-blue-600" />
+                      <div className="flex-1"><p className="text-xs font-medium">{videoFile ? videoFile.name : 'Video carregado'}</p></div>
+                      <button type="button" onClick={hrv} className="text-red-500 p-1"><Trash2 size={14} /></button>
+                    </div>
+                    <video controls className="w-full rounded-lg" src={videoPreview} style={{ maxHeight: '200px' }} />
+                  </div>
+                ) : (
+                  <label className="cursor-pointer inline-block">
+                    <div className="bg-blue-600 text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-blue-700"><Video size={14} /> Selecionar Video (MP4)</div>
+                    <input type="file" accept="video/*" onChange={hvu} className="hidden" disabled={iu || isSaving} />
+                  </label>
+                )}
+              </div>
+              <div className="p-4 border border-purple-200 rounded-xl bg-purple-50/30">
+                <label className="block text-sm font-semibold text-gray-900 mb-1.5">🎵 Musica dos Stories</label>
+                <p className="text-xs text-gray-500 mb-3"><strong className="text-purple-700">A musica so toca nos Stories.</strong></p>
+                {smp ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 bg-white p-2.5 rounded-lg border border-purple-200">
+                      <Music size={18} className="text-purple-600" />
+                      <div className="flex-1"><p className="text-xs font-medium">{smf ? smf.name : 'Musica carregada'}</p></div>
+                      <button type="button" onClick={hrm} className="text-red-500 p-1"><Trash2 size={14} /></button>
+                    </div>
+                    <audio controls className="w-full" src={smp} />
+                    <AudioTrimmer audioUrl={smp} startTime={mst} endTime={met || ad} duration={ad} onStartChange={setMst} onEndChange={setMet} />
+                  </div>
+                ) : (
+                  <label className="cursor-pointer inline-block">
+                    <div className="bg-purple-600 text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-purple-700"><Music size={14} /> Selecionar Musica (MP3)</div>
+                    <input type="file" accept="audio/*" onChange={hmu} className="hidden" />
+                  </label>
+                )}
+              </div>
+              <div className="p-4 border-2 border-dashed border-[#d4af37] rounded-xl bg-yellow-50/20">
+                <label className="block text-sm font-semibold text-gray-900 mb-2">📸 Fotos da Galeria</label>
+                <label className="cursor-pointer">
+                  <div className="w-full bg-[#d4af37] text-black font-semibold rounded-lg py-2.5 px-4 flex items-center justify-center gap-2 hover:bg-[#c4a137] text-sm"><FolderUp size={16} />Selecionar Fotos</div>
+                  <input type="file" accept="image/*" multiple onChange={hfu} className="hidden" />
+                </label>
+                {(up || []).length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs font-medium mb-2">{(up || []).length} foto(s)</p>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-80 overflow-y-auto p-1.5">
+                      {(up || []).map(function(p, i) {
+                        return (
+                          <div key={i} className="relative group">
+                            <img src={p} className="w-full aspect-square object-cover rounded-lg border" />
+                            <button type="button" onClick={function() { hrp(i); }} className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100"><Trash2 size={10} /></button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+              {(up || []).length > 0 && (
+                <>
+                  <div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50">
+                    <label className="block text-sm font-semibold mb-2">📷 Foto de Perfil</label>
+                    <div className="flex justify-center mb-3">
+                      <div className="w-20 h-20 rounded-full overflow-hidden border-3 border-[#d4af37] bg-neutral-900 p-0.5">
+                        {sp ? <img src={sp} className="w-full h-full object-cover rounded-full" /> : <div className="w-full h-full bg-neutral-800 rounded-full flex items-center justify-center"><Camera size={24} className="text-gray-400" /></div>}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
+                      {(up || []).slice(0, 50).map(function(p, i) {
+                        return (
+                          <div key={i} onClick={function() { setSp(p); }} className={'relative cursor-pointer rounded-lg overflow-hidden ' + (sp === p ? 'ring-3 ring-[#d4af37] scale-95' : 'hover:scale-95')}>
+                            <img src={p} className="w-full aspect-square object-cover" />
+                            {sp === p && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><CheckCircle size={20} className="text-[#d4af37]" /></div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div className="p-4 border border-gray-200 rounded-xl bg-gray-50/50">
+                    <label className="block text-sm font-semibold mb-2">⭐ Fotos em Destaque</label>
+                    <p className="text-xs text-gray-500 mb-3">Selecione ate 5 fotos para o fundo da tela de PIN</p>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto">
+                      {(up || []).slice(0, 50).map(function(p, i) {
+                        var isSel = sf.indexOf(i) !== -1;
+                        return (
+                          <div key={i} onClick={function() { if (isSel) setSf(sf.filter(function(x) { return x !== i; })); else if (sf.length < 5) setSf(sf.concat([i])); }} className={'relative cursor-pointer rounded-lg overflow-hidden ' + (isSel ? 'ring-3 ring-[#d4af37] scale-95' : 'hover:scale-95')}>
+                            <img src={p} className="w-full aspect-square object-cover" />
+                            {isSel && <div className="absolute inset-0 bg-black/40 flex items-center justify-center"><CheckCircle size={20} className="text-[#d4af37]" /></div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
+          
           {activeTab === 'personalizar' && (
             <div className="space-y-4">
-              <div className="p-4 border border-gray-200 rounded-xl bg-gray-50"><label className="block text-sm font-semibold mb-2">Logomarca</label><div className="flex flex-col sm:flex-row items-center gap-4"><div className="w-24 h-24 rounded-full overflow-hidden border-3 border-[#d4af37] bg-neutral-900 flex items-center justify-center p-1.5">{ll ? <img src={ll} className="w-full h-full object-contain" /> : <Camera size={28} className="text-gray-600" />}</div><div><label className="cursor-pointer"><div className="bg-black text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-gray-800"><Upload size={14} /> Enviar Logo</div><input type="file" accept="image/*" onChange={hlu} className="hidden" /></label>{ll && <button type="button" onClick={function() { setLl(''); }} className="text-red-500 text-xs mt-1.5">Remover</button>}</div></div></div>
-              <div className="p-4 border border-gray-200 rounded-xl bg-gray-50"><label className="block text-sm font-semibold mb-2">Imagens de Fundo</label><label className="cursor-pointer inline-block mb-3"><div className="bg-black text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-gray-800"><Grid size={14} /> Adicionar Imagens</div><input type="file" accept="image/*" multiple onChange={hlbu} className="hidden" /></label>{(lb || []).length > 0 && <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-72 overflow-y-auto p-1.5 border bg-white rounded-lg">{(lb || []).map(function(bg, i) { return <div key={i} className="relative group"><img src={bg} className="w-full aspect-square object-cover rounded-md" /><button type="button" onClick={function() { setLb(lb.filter(function(_, j) { return j !== i; })); }} className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100"><Trash2 size={10} /></button></div>; })}</div>}</div>
+              <div className="p-4 border border-gray-200 rounded-xl bg-gray-50">
+                <label className="block text-sm font-semibold mb-2">Logomarca</label>
+                <div className="flex flex-col sm:flex-row items-center gap-4">
+                  <div className="w-24 h-24 rounded-full overflow-hidden border-3 border-[#d4af37] bg-neutral-900 flex items-center justify-center p-1.5">
+                    {ll ? <img src={ll} className="w-full h-full object-contain" /> : <Camera size={28} className="text-gray-600" />}
+                  </div>
+                  <div>
+                    <label className="cursor-pointer">
+                      <div className="bg-black text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-gray-800"><Upload size={14} /> Enviar Logo</div>
+                      <input type="file" accept="image/*" onChange={hlu} className="hidden" />
+                    </label>
+                    {ll && <button type="button" onClick={function() { setLl(''); }} className="text-red-500 text-xs mt-1.5">Remover</button>}
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 border border-gray-200 rounded-xl bg-gray-50">
+                <label className="block text-sm font-semibold mb-2">Imagens de Fundo</label>
+                <label className="cursor-pointer inline-block mb-3">
+                  <div className="bg-black text-white text-xs font-semibold rounded-full py-2 px-4 flex items-center gap-1.5 hover:bg-gray-800"><Grid size={14} /> Adicionar Imagens</div>
+                  <input type="file" accept="image/*" multiple onChange={hlbu} className="hidden" />
+                </label>
+                {(lb || []).length > 0 && (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-2 max-h-72 overflow-y-auto p-1.5 border bg-white rounded-lg">
+                    {(lb || []).map(function(bg, i) {
+                      return (
+                        <div key={i} className="relative group">
+                          <img src={bg} className="w-full aspect-square object-cover rounded-md" />
+                          <button type="button" onClick={function() { setLb(lb.filter(function(_, j) { return j !== i; })); }} className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100"><Trash2 size={10} /></button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           )}
-          {(iu || isSaving) && <div><div className="w-full bg-gray-200 rounded-full h-1.5"><div className="bg-[#d4af37] h-1.5 rounded-full transition-all" style={{ width: upr + '%' }}></div></div><p className="text-xs text-gray-500 text-center mt-1">{uploadStatus || 'Salvando... ' + upr + '%'}</p></div>}
-          <div className="pt-4 flex justify-end gap-2 border-t border-gray-100"><button type="button" onClick={onCancel} className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100">Cancelar</button><button type="submit" disabled={isSaving} className="px-5 py-2 rounded-full text-sm font-semibold text-white bg-black hover:bg-gray-800 disabled:opacity-50 flex items-center gap-1.5">{isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}{isNew ? 'Criar Album' : 'Salvar'}</button></div>
+          
+          {(iu || isSaving) && (
+            <div>
+              <div className="w-full bg-gray-200 rounded-full h-1.5"><div className="bg-[#d4af37] h-1.5 rounded-full transition-all" style={{ width: upr + '%' }}></div></div>
+              <p className="text-xs text-gray-500 text-center mt-1">{uploadStatus || 'Salvando... ' + upr + '%'}</p>
+            </div>
+          )}
+          
+          <div className="pt-4 flex justify-end gap-2 border-t border-gray-100">
+            <button type="button" onClick={onCancel} className="px-4 py-2 rounded-full text-sm font-medium text-gray-600 hover:bg-gray-100">Cancelar</button>
+            <button type="submit" disabled={isSaving} className="px-5 py-2 rounded-full text-sm font-semibold text-white bg-black hover:bg-gray-800 disabled:opacity-50 flex items-center gap-1.5">
+              {isSaving ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}{isNew ? 'Criar Album' : 'Salvar'}
+            </button>
+          </div>
         </form>
       </div>
     </div>
