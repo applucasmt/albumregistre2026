@@ -9,7 +9,7 @@ export default async function handler(req, res) {
 
   try {
     // Busca os dados do álbum na sua planilha Google
-    const sheetApiUrl = 'https://script.google.com/macros/s/AKfycbwaNkmrY33Uf57_U1w5u1DRxNegt1xff9Us5hvicZiMVcXQj4d4Fe-wqwL_tSLdreY/exec';
+    const sheetApiUrl = 'https://script.google.com/macros/s/AKfycbyYLxM6wufpvZQ4G3c1v1P6rhr3W8_oRL1khbpkPYgVpa1MkqyPZ8So4UxH6yaOapBdeg/exec';
     const response = await fetch(`${sheetApiUrl}?id=${id}`);
     const data = await response.json();
 
